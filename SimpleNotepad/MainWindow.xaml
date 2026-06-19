@@ -44,8 +44,7 @@
                 <TextBox Grid.Row="2"
                          Margin="0,0,0,12"
                          Padding="8,6"
-                         Text="Search sessions"
-                         Foreground="#6B7280" />
+                         ToolTip="Search sessions" />
 
                 <ListBox Grid.Row="3"
                          BorderThickness="0"
