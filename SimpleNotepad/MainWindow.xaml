@@ -187,6 +187,7 @@
                             <MenuItem Header="Delete" Click="DeleteSession_Click" />
                             <Separator />
                             <MenuItem Header="Pin/Unpin" Click="PinSession_Click" />
+                            <MenuItem Header="Export…" Click="ExportSession_Click" />
                         </ContextMenu>
                     </ListBox.ContextMenu>
                     <ListBox.ItemTemplate>
@@ -350,6 +351,9 @@
                                        WordWrap="True"
                                        Background="#1E1E1E"
                                        Foreground="#D4D4D4"
+                                       AllowDrop="True"
+                                       PreviewDragOver="Editor_PreviewDragOver"
+                                       PreviewDrop="Editor_PreviewDrop"
                                        ContextMenuOpening="Editor_ContextMenuOpening"
                                        TextChanged="Editor_TextChanged">
                     <avalonEdit:TextEditor.ContextMenu>

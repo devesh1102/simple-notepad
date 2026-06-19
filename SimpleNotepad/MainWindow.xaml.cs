@@ -649,7 +649,7 @@ public partial class MainWindow : Window
             Title = "Open file",
             Filter = "Text and JSON files (*.txt;*.json)|*.txt;*.json|All files (*.*)|*.*",
             CheckFileExists = true,
-            Multiselect = false
+            Multiselect = true
         };
 
         if (dialog.ShowDialog(this) != true)
@@ -657,9 +657,21 @@ public partial class MainWindow : Window
             return;
         }
 
+        await ImportFilesAsSessionsAsync(dialog.FileNames);
+    }
+
+    private async Task ImportFilesAsSessionsAsync(IReadOnlyList<string> paths)
+    {
+        if (paths is null || paths.Count == 0)
+        {
+            return;
+        }
+
+        var failures = new List<string>();
+        string? lastAddedId = null;
+
         try
         {
-            var content = await File.ReadAllTextAsync(dialog.FileName, StrictUtf8);
             await _selectionSemaphore.WaitAsync();
             try
             {
@@ -670,26 +682,138 @@ public partial class MainWindow : Window
 
                 await SaveCurrentSessionAsync();
 
-                var session = _sessionStorage.CreateSession();
-                session.Title = Path.GetFileName(dialog.FileName);
-                session.Preview = CreatePreview(content);
-                session.UpdatedAt = DateTimeOffset.UtcNow;
-                session.ExpiresAt = session.UpdatedAt.AddDays(7);
+                var newSessions = new List<NoteSession>();
+                foreach (var path in paths)
+                {
+                    try
+                    {
+                        var content = await File.ReadAllTextAsync(path, StrictUtf8);
+                        var session = _sessionStorage.CreateSession();
+                        session.Title = Path.GetFileName(path);
+                        session.Preview = CreatePreview(content);
+                        session.UpdatedAt = DateTimeOffset.UtcNow;
+                        session.ExpiresAt = session.UpdatedAt.AddDays(7);
 
-                await _sessionStorage.SaveContentAsync(session, content);
-                ReplaceSessionItems(_sessions.Select(item => item.Session).Append(session));
-                await SaveIndexAsync();
-                SessionsList.SelectedItem = _sessions.FirstOrDefault(item => item.Id == session.Id);
+                        await _sessionStorage.SaveContentAsync(session, content);
+                        newSessions.Add(session);
+                        lastAddedId = session.Id;
+                    }
+                    catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or DecoderFallbackException)
+                    {
+                        failures.Add($"{Path.GetFileName(path)}: {exception.Message}");
+                    }
+                }
+
+                if (newSessions.Count > 0)
+                {
+                    ReplaceSessionItems(_sessions.Select(item => item.Session).Concat(newSessions));
+                    await SaveIndexAsync();
+                    SessionsList.SelectedItem = _sessions.FirstOrDefault(item => item.Id == lastAddedId);
+                }
             }
             finally
             {
                 _selectionSemaphore.Release();
             }
         }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or DecoderFallbackException)
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException or
+            EncoderFallbackException or DecoderFallbackException or InvalidOperationException)
         {
             MarkSaveError();
-            ShowError("Simple Notepad could not open the selected file.", exception);
+            ShowError("Simple Notepad could not import the selected files.", exception);
+            return;
+        }
+
+        if (failures.Count > 0)
+        {
+            MarkSaveError();
+            ShowError(
+                "Simple Notepad could not open some files.",
+                new IOException(string.Join(Environment.NewLine, failures)));
+        }
+    }
+
+    private void Editor_PreviewDragOver(object sender, System.Windows.DragEventArgs e)
+    {
+        if (e.Data.GetDataPresent(System.Windows.DataFormats.FileDrop))
+        {
+            e.Effects = System.Windows.DragDropEffects.Copy;
+            e.Handled = true;
+        }
+    }
+
+    private async void Editor_PreviewDrop(object sender, System.Windows.DragEventArgs e)
+    {
+        if (!e.Data.GetDataPresent(System.Windows.DataFormats.FileDrop))
+        {
+            return;
+        }
+
+        e.Handled = true;
+
+        if (e.Data.GetData(System.Windows.DataFormats.FileDrop) is not string[] paths)
+        {
+            return;
+        }
+
+        var files = paths.Where(File.Exists).ToList();
+        if (files.Count == 0)
+        {
+            return;
+        }
+
+        await ImportFilesAsSessionsAsync(files);
+    }
+
+    private async void ExportSession_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var item = _contextMenuTarget ?? SessionsList.SelectedItem as SessionListItem;
+            if (item is null)
+            {
+                return;
+            }
+
+            string content;
+            if (_currentSession is not null && _currentSession.Id == item.Id)
+            {
+                content = Editor.Text;
+            }
+            else
+            {
+                content = await _sessionStorage.LoadContentAsync(item.Session);
+            }
+
+            var isJson = TryFormatJson(content, writeIndented: false, out _, out _);
+            var safeName = string.IsNullOrWhiteSpace(item.Title) ? "Untitled" : item.Title.Trim();
+            foreach (var invalid in Path.GetInvalidFileNameChars())
+            {
+                safeName = safeName.Replace(invalid, '_');
+            }
+
+            var dialog = new SaveFileDialog
+            {
+                Title = "Export session",
+                Filter = "Text files (*.txt)|*.txt|JSON files (*.json)|*.json|All files (*.*)|*.*",
+                FilterIndex = isJson ? 2 : 1,
+                FileName = isJson ? $"{safeName}.json" : $"{safeName}.txt",
+                OverwritePrompt = true
+            };
+
+            if (dialog.ShowDialog(this) != true)
+            {
+                return;
+            }
+
+            await File.WriteAllTextAsync(dialog.FileName, content, StrictUtf8);
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException or
+            EncoderFallbackException or InvalidOperationException)
+        {
+            ShowError("Simple Notepad could not export the session.", exception);
         }
     }
 

@@ -6,3 +6,6 @@ obj/
 *.cache
 TestResults/
 
+
+# Publish artifacts (large self-contained EXEs)
+artifacts/
