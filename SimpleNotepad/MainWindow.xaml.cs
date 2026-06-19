@@ -875,29 +875,21 @@ public partial class MainWindow : Window
         MinifyJsonMenuItem.IsEnabled = shouldEnableActions;
         OpenJsonInVsCodeMenuItem.IsEnabled = shouldEnableActions;
 
-        var canInspectDocumentJson = Editor.Text.Length <= JsonHighlightMaxLength;
-        if (canInspectDocumentJson && IsFullDocumentJson())
+        var jsonBlocks = Editor.Text.Length <= JsonHighlightMaxLength
+            ? JsonFoldingStrategy.GetJsonBlocks(Editor.Text)
+            : (IReadOnlyList<(int Start, int End)>)System.Array.Empty<(int Start, int End)>();
+
+        if (jsonBlocks.Count > 0)
         {
             EnableJsonHighlighting();
+            _jsonColorizer!.SetRanges(jsonBlocks);
+            Editor.TextArea.TextView.Redraw();
             EnableJsonFolding();
             return;
         }
 
         DisableJsonHighlighting();
-
-        if (canInspectDocumentJson && EnableJsonFolding())
-        {
-            return;
-        }
-
         DisableJsonFolding();
-    }
-
-    private bool IsFullDocumentJson()
-    {
-        return !string.IsNullOrWhiteSpace(Editor.Text) &&
-               Editor.Text.Length <= JsonHighlightMaxLength &&
-               TryFormatJson(Editor.Text, writeIndented: false, out _, out _);
     }
 
     private void EnableJsonHighlighting()
@@ -1566,13 +1558,59 @@ public partial class MainWindow : Window
         private static readonly SolidColorBrush NumberBrush = CreateFrozenBrush(0xB5, 0xCE, 0xA8);
         private static readonly SolidColorBrush KeywordBrush = CreateFrozenBrush(0x56, 0x9C, 0xD6);
 
+        private IReadOnlyList<(int Start, int End)> _ranges = System.Array.Empty<(int Start, int End)>();
+
+        public void SetRanges(IReadOnlyList<(int Start, int End)> ranges)
+        {
+            _ranges = ranges ?? System.Array.Empty<(int Start, int End)>();
+        }
+
+        private bool IsInJsonRange(int absoluteOffset)
+        {
+            foreach (var (start, end) in _ranges)
+            {
+                if (absoluteOffset >= start && absoluteOffset < end)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private bool LineOverlapsJson(DocumentLine line)
+        {
+            var lineStart = line.Offset;
+            var lineEnd = line.EndOffset;
+            foreach (var (start, end) in _ranges)
+            {
+                if (start < lineEnd && end > lineStart)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         protected override void ColorizeLine(DocumentLine line)
         {
+            if (_ranges.Count == 0 || !LineOverlapsJson(line))
+            {
+                return;
+            }
+
             var lineText = CurrentContext.Document.GetText(line);
             var index = 0;
 
             while (index < lineText.Length)
             {
+                if (!IsInJsonRange(line.Offset + index))
+                {
+                    index++;
+                    continue;
+                }
+
                 var character = lineText[index];
                 if (character == '"')
                 {
@@ -1808,6 +1846,32 @@ public partial class MainWindow : Window
                     Name = text[index] == '{' ? "{...}" : "[...]"
                 };
             }
+        }
+
+        public static IReadOnlyList<(int Start, int End)> GetJsonBlocks(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return System.Array.Empty<(int Start, int End)>();
+            }
+
+            var merged = new List<(int Start, int End)>();
+            foreach (var (start, end) in FindJsonCandidates(text).OrderBy(candidate => candidate.Start))
+            {
+                if (merged.Count > 0 && start <= merged[^1].End)
+                {
+                    if (end > merged[^1].End)
+                    {
+                        merged[^1] = (merged[^1].Start, end);
+                    }
+                }
+                else
+                {
+                    merged.Add((start, end));
+                }
+            }
+
+            return merged;
         }
 
         private static IEnumerable<(int Start, int End)> FindJsonCandidates(string text)
