@@ -174,6 +174,11 @@ public partial class MainWindow : Window
             await _selectionSemaphore.WaitAsync();
             try
             {
+                if (_isClosingSaveInProgress)
+                {
+                    return;
+                }
+
                 await CreateNewSessionAsync();
             }
             finally
@@ -441,6 +446,11 @@ public partial class MainWindow : Window
             await _selectionSemaphore.WaitAsync();
             try
             {
+                if (_isClosingSaveInProgress)
+                {
+                    return;
+                }
+
                 var currentItem = _sessions.FirstOrDefault(sessionItem => sessionItem.Id == item.Id);
                 if (currentItem is null)
                 {
@@ -525,6 +535,11 @@ public partial class MainWindow : Window
             await _selectionSemaphore.WaitAsync();
             try
             {
+                if (_isClosingSaveInProgress)
+                {
+                    return;
+                }
+
                 var currentItem = _sessions.FirstOrDefault(sessionItem => sessionItem.Id == item.Id);
                 if (currentItem is null)
                 {
@@ -532,6 +547,7 @@ public partial class MainWindow : Window
                 }
 
                 var originalPinned = currentItem.Session.IsPinned;
+                var originalUnsavedIndex = _hasUnsavedIndex;
                 currentItem.Session.IsPinned = !originalPinned;
                 _hasUnsavedIndex = true;
 
@@ -542,7 +558,7 @@ public partial class MainWindow : Window
                 catch
                 {
                     currentItem.Session.IsPinned = originalPinned;
-                    _hasUnsavedIndex = false;
+                    _hasUnsavedIndex = originalUnsavedIndex;
                     throw;
                 }
 
