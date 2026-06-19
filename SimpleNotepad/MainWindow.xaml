@@ -354,28 +354,25 @@
                                        TextChanged="Editor_TextChanged">
                     <avalonEdit:TextEditor.ContextMenu>
                         <ContextMenu>
-                            <MenuItem x:Name="LinkedPowerShellMenuItem"
-                                      Header="Send to Linked PowerShell">
-                                <MenuItem x:Name="SendToPowerShellMenuItem"
-                                          Header="Send to PowerShell"
-                                          Click="SendToPowerShellMenuItem_Click" />
-                                <MenuItem x:Name="SendToAdminPowerShellMenuItem"
-                                          Header="Send to PowerShell as Admin"
-                                          Click="SendToAdminPowerShellMenuItem_Click" />
-                                <Separator />
-                                <MenuItem x:Name="RestartNormalPowerShellMenuItem"
-                                          Header="Restart Normal PowerShell"
-                                          Click="RestartNormalPowerShellMenuItem_Click" />
-                                <MenuItem x:Name="RestartAdminPowerShellMenuItem"
-                                          Header="Restart Admin PowerShell"
-                                          Click="RestartAdminPowerShellMenuItem_Click" />
-                                <MenuItem x:Name="StopNormalPowerShellMenuItem"
-                                          Header="Stop Normal PowerShell"
-                                          Click="StopNormalPowerShellMenuItem_Click" />
-                                <MenuItem x:Name="StopAdminPowerShellMenuItem"
-                                          Header="Stop Admin PowerShell"
-                                          Click="StopAdminPowerShellMenuItem_Click" />
-                            </MenuItem>
+                            <MenuItem x:Name="SendToPowerShellMenuItem"
+                                      Header="Send to Linked PowerShell"
+                                      Click="SendToPowerShellMenuItem_Click" />
+                            <MenuItem x:Name="SendToAdminPowerShellMenuItem"
+                                      Header="Send to Linked PowerShell as Admin"
+                                      Click="SendToAdminPowerShellMenuItem_Click" />
+                            <Separator />
+                            <MenuItem x:Name="RestartNormalPowerShellMenuItem"
+                                      Header="Restart Linked PowerShell"
+                                      Click="RestartNormalPowerShellMenuItem_Click" />
+                            <MenuItem x:Name="RestartAdminPowerShellMenuItem"
+                                      Header="Restart Admin PowerShell"
+                                      Click="RestartAdminPowerShellMenuItem_Click" />
+                            <MenuItem x:Name="StopNormalPowerShellMenuItem"
+                                      Header="Stop Linked PowerShell"
+                                      Click="StopNormalPowerShellMenuItem_Click" />
+                            <MenuItem x:Name="StopAdminPowerShellMenuItem"
+                                      Header="Stop Admin PowerShell"
+                                      Click="StopAdminPowerShellMenuItem_Click" />
                             <Separator />
                             <MenuItem x:Name="FormatJsonMenuItem"
                                       Header="Format JSON"

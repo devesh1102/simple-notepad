@@ -3,7 +3,7 @@ using System.Windows;
 
 namespace SimpleNotepad;
 
-public partial class App : Application
+public partial class App : System.Windows.Application
 {
     private Mutex? _singleInstanceMutex;
     private bool _ownsMutex;

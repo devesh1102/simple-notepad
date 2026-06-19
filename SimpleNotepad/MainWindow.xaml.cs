@@ -16,6 +16,13 @@ using Microsoft.Win32;
 using SimpleNotepad.Models;
 using SimpleNotepad.Services;
 using SimpleNotepad.ViewModels;
+using Brush = System.Windows.Media.Brush;
+using Color = System.Windows.Media.Color;
+using KeyEventArgs = System.Windows.Input.KeyEventArgs;
+using MessageBox = System.Windows.MessageBox;
+using OpenFileDialog = Microsoft.Win32.OpenFileDialog;
+using SaveFileDialog = Microsoft.Win32.SaveFileDialog;
+using WpfTextBox = System.Windows.Controls.TextBox;
 
 namespace SimpleNotepad;
 
@@ -846,7 +853,8 @@ public partial class MainWindow : Window
         MinifyJsonMenuItem.IsEnabled = shouldEnableActions;
         OpenJsonInVsCodeMenuItem.IsEnabled = shouldEnableActions;
 
-        if (Editor.Text.Length <= JsonHighlightMaxLength && IsFullDocumentJson())
+        var canInspectDocumentJson = Editor.Text.Length <= JsonHighlightMaxLength;
+        if (canInspectDocumentJson && IsFullDocumentJson())
         {
             EnableJsonHighlighting();
             EnableJsonFolding();
@@ -854,6 +862,12 @@ public partial class MainWindow : Window
         }
 
         DisableJsonHighlighting();
+
+        if (canInspectDocumentJson && EnableJsonFolding())
+        {
+            return;
+        }
+
         DisableJsonFolding();
     }
 
@@ -888,10 +902,10 @@ public partial class MainWindow : Window
         Editor.TextArea.TextView.Redraw();
     }
 
-    private void EnableJsonFolding()
+    private bool EnableJsonFolding()
     {
         _jsonFoldingManager ??= FoldingManager.Install(Editor.TextArea);
-        _jsonFoldingStrategy.UpdateFoldings(_jsonFoldingManager, Editor.Document);
+        return _jsonFoldingStrategy.UpdateFoldings(_jsonFoldingManager, Editor.Document);
     }
 
     private void DisableJsonFolding()
@@ -953,31 +967,6 @@ public partial class MainWindow : Window
         if (string.IsNullOrWhiteSpace(command))
         {
             ShowLinkedPowerShellMessage("Select command text before sending it to linked PowerShell.");
-            return;
-        }
-
-        var isAdmin = target == LinkedPowerShellTarget.Admin;
-        var willStartNewShell = !_linkedPowerShell.IsRunning(target);
-        var preview = $"""
-Send the selected command to linked PowerShell?
-
-Target shell: {_linkedPowerShell.GetSessionDescription(target)}
-Elevation: {(isAdmin ? "Admin (UAC required)" : "Normal")}
-Session: {_currentSession?.Title ?? "No session"} ({_currentSession?.Id ?? "none"})
-Action: {(isAdmin ? "Start a new elevated PowerShell and run immediately" : willStartNewShell ? "Start linked shell and run immediately" : "Run immediately in existing linked shell")}
-
-Command:
-{command}
-""";
-
-        var result = MessageBox.Show(
-            preview,
-            "Send to linked PowerShell",
-            MessageBoxButton.YesNo,
-            isAdmin ? MessageBoxImage.Warning : MessageBoxImage.Question);
-
-        if (result != MessageBoxResult.Yes)
-        {
             return;
         }
 
@@ -1150,7 +1139,7 @@ Command:
         }
 
         e.Handled = true;
-        var restoreFocusTarget = sender as TextBox;
+        var restoreFocusTarget = sender as WpfTextBox;
         if ((Keyboard.Modifiers & ModifierKeys.Shift) != 0)
         {
             FindPrevious();
@@ -1677,20 +1666,63 @@ Command:
 
     private sealed class JsonFoldingStrategy
     {
-        public void UpdateFoldings(FoldingManager manager, TextDocument document)
+        private const int MaxCandidateLength = 50_000;
+
+        public bool UpdateFoldings(FoldingManager manager, TextDocument document)
         {
-            var foldings = CreateNewFoldings(document);
+            var foldings = CreateNewFoldings(document).ToList();
             manager.UpdateFoldings(foldings.OrderBy(folding => folding.StartOffset), firstErrorOffset: -1);
+            return foldings.Count > 0;
         }
 
         private static IEnumerable<NewFolding> CreateNewFoldings(TextDocument document)
         {
             var text = document.Text;
-            var stack = new Stack<(char Opening, int Offset)>();
+            for (var index = 0; index < text.Length; index++)
+            {
+                if (text[index] is not ('{' or '['))
+                {
+                    continue;
+                }
+
+                if (!TryFindJsonCandidateEnd(text, index, out var endOffset))
+                {
+                    continue;
+                }
+
+                if (endOffset - index > MaxCandidateLength)
+                {
+                    continue;
+                }
+
+                var startLine = document.GetLineByOffset(index).LineNumber;
+                var endLine = document.GetLineByOffset(endOffset - 1).LineNumber;
+                if (startLine == endLine)
+                {
+                    continue;
+                }
+
+                var candidateJson = text[index..endOffset];
+                if (!TryFormatJson(candidateJson, writeIndented: false, out _, out _))
+                {
+                    continue;
+                }
+
+                yield return new NewFolding(index, endOffset)
+                {
+                    Name = text[index] == '{' ? "{...}" : "[...]"
+                };
+            }
+        }
+
+        private static bool TryFindJsonCandidateEnd(string text, int start, out int endOffset)
+        {
+            endOffset = -1;
+            var stack = new Stack<char>();
             var inString = false;
             var escaped = false;
 
-            for (var index = 0; index < text.Length; index++)
+            for (var index = start; index < text.Length && index - start <= MaxCandidateLength; index++)
             {
                 var character = text[index];
                 if (inString)
@@ -1723,7 +1755,7 @@ Command:
 
                 if (character is '{' or '[')
                 {
-                    stack.Push((character, index));
+                    stack.Push(character);
                     continue;
                 }
 
@@ -1733,29 +1765,19 @@ Command:
                 }
 
                 var opening = stack.Pop();
-                if (!IsMatchingJsonPair(opening.Opening, character))
+                if ((opening == '{' && character != '}') || (opening == '[' && character != ']'))
                 {
-                    continue;
+                    return false;
                 }
 
-                var startLine = document.GetLineByOffset(opening.Offset).LineNumber;
-                var endOffset = index + 1;
-                var endLine = document.GetLineByOffset(index).LineNumber;
-                if (startLine == endLine)
+                if (stack.Count == 0)
                 {
-                    continue;
+                    endOffset = index + 1;
+                    return true;
                 }
-
-                yield return new NewFolding(opening.Offset, endOffset)
-                {
-                    Name = opening.Opening == '{' ? "{...}" : "[...]"
-                };
             }
-        }
 
-        private static bool IsMatchingJsonPair(char opening, char closing)
-        {
-            return (opening == '{' && closing == '}') || (opening == '[' && closing == ']');
+            return false;
         }
     }
 

@@ -1,6 +1,7 @@
 using System.Diagnostics;
-using System.IO;
+using System.Runtime.InteropServices;
 using System.Text;
+using Forms = System.Windows.Forms;
 
 namespace SimpleNotepad.Services;
 
@@ -12,27 +13,13 @@ public enum LinkedPowerShellTarget
 
 public sealed class LinkedPowerShellService : IDisposable
 {
-    private const string AppFolderName = "SimpleNotepad";
-    private const string LinkedShellFolderName = "linked-powershell";
-
-    private readonly string _linkedShellFolder;
+    private const int SwRestore = 9;
     private readonly Dictionary<LinkedPowerShellTarget, LinkedPowerShellSession> _sessions = [];
-
-    public LinkedPowerShellService()
-    {
-        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        _linkedShellFolder = Path.Combine(localAppData, AppFolderName, LinkedShellFolderName);
-    }
 
     public string GetSessionDescription(LinkedPowerShellTarget target)
     {
         var session = GetSession(target);
-        if (target == LinkedPowerShellTarget.Admin)
-        {
-            return IsRunning(target) ? $"Admin window ({session.Id})" : "Admin (new elevated command window)";
-        }
-
-        var elevation = "Normal";
+        var elevation = target == LinkedPowerShellTarget.Admin ? "Admin" : "Normal";
         return $"{elevation} ({(IsRunning(target) ? session.Id : "new session")})";
     }
 
@@ -42,7 +29,7 @@ public sealed class LinkedPowerShellService : IDisposable
         return session.Process is { HasExited: false };
     }
 
-    public async Task SendCommandAsync(LinkedPowerShellTarget target, string command, CancellationToken cancellationToken = default)
+    public Task SendCommandAsync(LinkedPowerShellTarget target, string command)
     {
         if (string.IsNullOrWhiteSpace(command))
         {
@@ -51,23 +38,20 @@ public sealed class LinkedPowerShellService : IDisposable
 
         if (target == LinkedPowerShellTarget.Admin)
         {
-            StartAdminCommand(command);
-            return;
+            return RunOnStaThreadAsync(() => StartAdminCommand(command));
         }
 
-        EnsureStarted(target);
-        var session = GetSession(target);
-        var encodedCommand = Convert.ToBase64String(Encoding.UTF8.GetBytes(command));
-        await File.AppendAllTextAsync(session.QueuePath, encodedCommand + Environment.NewLine, new UTF8Encoding(false), cancellationToken);
+        return RunOnStaThreadAsync(() =>
+        {
+            EnsureStarted(target);
+            var process = GetSession(target).Process
+                ?? throw new InvalidOperationException("Linked PowerShell is not running.");
+            SendCommandToInteractiveWindow(process, command);
+        });
     }
 
     public void Restart(LinkedPowerShellTarget target)
     {
-        if (target == LinkedPowerShellTarget.Admin)
-        {
-            throw new InvalidOperationException("Admin PowerShell restart is not available. Close the elevated PowerShell window and send the command again.");
-        }
-
         Stop(target);
         EnsureStarted(target);
     }
@@ -81,11 +65,6 @@ public sealed class LinkedPowerShellService : IDisposable
             return;
         }
 
-        if (target == LinkedPowerShellTarget.Admin)
-        {
-            throw new InvalidOperationException("Admin PowerShell must be closed from its own elevated window.");
-        }
-
         try
         {
             process.CloseMainWindow();
@@ -96,23 +75,10 @@ public sealed class LinkedPowerShellService : IDisposable
         }
         catch (Exception exception) when (exception is InvalidOperationException or NotSupportedException or System.ComponentModel.Win32Exception)
         {
-            if (process.HasExited)
+            if (!process.HasExited)
             {
-                session.Process = null;
-                return;
+                throw new InvalidOperationException("Linked PowerShell did not stop. Close it from its own window and try again.", exception);
             }
-
-            throw new InvalidOperationException("Linked PowerShell did not stop.", exception);
-        }
-
-        if (!process.HasExited)
-        {
-            process.WaitForExit(milliseconds: 500);
-        }
-
-        if (!process.HasExited)
-        {
-            throw new InvalidOperationException("Linked PowerShell did not stop.");
         }
 
         session.Process = null;
@@ -121,42 +87,40 @@ public sealed class LinkedPowerShellService : IDisposable
     public string GetStatus()
     {
         var normal = IsRunning(LinkedPowerShellTarget.Normal) ? "normal connected" : "normal disconnected";
-        var admin = IsRunning(LinkedPowerShellTarget.Admin) ? "admin window open" : "admin disconnected";
+        var admin = IsRunning(LinkedPowerShellTarget.Admin) ? "admin connected" : "admin disconnected";
         return $"PS: {normal}, {admin}";
     }
 
     public void Dispose()
     {
-        try
+        foreach (var target in _sessions.Keys.ToList())
         {
-            Stop(LinkedPowerShellTarget.Normal);
-        }
-        catch (InvalidOperationException)
-        {
+            try
+            {
+                Stop(target);
+            }
+            catch (InvalidOperationException)
+            {
+            }
         }
     }
 
     private void EnsureStarted(LinkedPowerShellTarget target)
     {
-        if (target == LinkedPowerShellTarget.Admin)
-        {
-            throw new InvalidOperationException("Admin PowerShell uses a new elevated command window for each confirmed command.");
-        }
-
         if (IsRunning(target))
         {
             return;
         }
 
-        Directory.CreateDirectory(_linkedShellFolder);
         var session = GetSession(target);
-        File.WriteAllText(session.QueuePath, string.Empty, new UTF8Encoding(false));
-
-        var encodedStartupScript = Convert.ToBase64String(Encoding.Unicode.GetBytes(CreateStartupScript(session, target)));
+        var title = target == LinkedPowerShellTarget.Admin
+            ? $"SimpleNotepad Linked PowerShell ADMIN - {session.Id}"
+            : $"SimpleNotepad Linked PowerShell - {session.Id}";
+        var startupCommand = $"$host.UI.RawUI.WindowTitle='{EscapePowerShellSingleQuotedString(title)}'; Write-Host 'Linked to SimpleNotepad. You can use this as a normal PowerShell window.' -ForegroundColor Cyan";
         var startInfo = new ProcessStartInfo
         {
             FileName = "powershell.exe",
-            Arguments = $"-NoExit -ExecutionPolicy Bypass -EncodedCommand {encodedStartupScript}",
+            Arguments = $"-NoExit -NoProfile -ExecutionPolicy Bypass -Command \"{startupCommand}\"",
             UseShellExecute = target == LinkedPowerShellTarget.Admin,
             WorkingDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
         };
@@ -178,7 +142,7 @@ public sealed class LinkedPowerShellService : IDisposable
         var startInfo = new ProcessStartInfo
         {
             FileName = "powershell.exe",
-            Arguments = $"-NoExit -ExecutionPolicy Bypass -EncodedCommand {encodedCommand}",
+            Arguments = $"-NoExit -NoProfile -ExecutionPolicy Bypass -EncodedCommand {encodedCommand}",
             UseShellExecute = true,
             Verb = "runas",
             WorkingDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
@@ -188,6 +152,63 @@ public sealed class LinkedPowerShellService : IDisposable
             ?? throw new InvalidOperationException("Admin PowerShell did not start.");
     }
 
+    private static void SendCommandToInteractiveWindow(Process process, string command)
+    {
+        var windowHandle = WaitForMainWindowHandle(process);
+        if (windowHandle == IntPtr.Zero)
+        {
+            throw new InvalidOperationException("Linked PowerShell window is not ready.");
+        }
+
+        ShowWindow(windowHandle, SwRestore);
+        if (!SetForegroundWindow(windowHandle))
+        {
+            throw new InvalidOperationException("Simple Notepad could not focus linked PowerShell.");
+        }
+
+        var previousClipboard = TryCreateClipboardSnapshot();
+        try
+        {
+            Forms.Clipboard.SetText(command, Forms.TextDataFormat.UnicodeText);
+            Forms.SendKeys.SendWait("^v");
+            Forms.SendKeys.SendWait("{ENTER}");
+        }
+        catch (ExternalException exception)
+        {
+            throw new InvalidOperationException("Simple Notepad could not access the clipboard to send the command.", exception);
+        }
+        finally
+        {
+            if (previousClipboard is not null)
+            {
+                TryRestoreClipboardData(previousClipboard);
+            }
+        }
+    }
+
+    private static IntPtr WaitForMainWindowHandle(Process process)
+    {
+        var timeoutAt = DateTimeOffset.UtcNow.AddSeconds(8);
+        while (DateTimeOffset.UtcNow < timeoutAt)
+        {
+            process.Refresh();
+            if (process.HasExited)
+            {
+                return IntPtr.Zero;
+            }
+
+            if (process.MainWindowHandle != IntPtr.Zero)
+            {
+                return process.MainWindowHandle;
+            }
+
+            Thread.Sleep(millisecondsTimeout: 100);
+        }
+
+        process.Refresh();
+        return process.MainWindowHandle;
+    }
+
     private LinkedPowerShellSession GetSession(LinkedPowerShellTarget target)
     {
         if (_sessions.TryGetValue(target, out var session))
@@ -195,78 +216,77 @@ public sealed class LinkedPowerShellService : IDisposable
             return session;
         }
 
-        var id = Guid.NewGuid().ToString("N")[..8];
-        var queuePath = Path.Combine(_linkedShellFolder, $"{target.ToString().ToLowerInvariant()}-{id}.commands");
-        session = new LinkedPowerShellSession(id, queuePath);
+        session = new LinkedPowerShellSession(Guid.NewGuid().ToString("N")[..8]);
         _sessions[target] = session;
         return session;
     }
 
-    private static string CreateStartupScript(LinkedPowerShellSession session, LinkedPowerShellTarget target)
+    private static Task RunOnStaThreadAsync(Action action)
     {
-        var title = target == LinkedPowerShellTarget.Admin
-            ? $"SimpleNotepad Linked PowerShell ADMIN - {session.Id}"
-            : $"SimpleNotepad Linked PowerShell - {session.Id}";
-        var escapedTitle = EscapePowerShellSingleQuotedString(title);
-        var escapedQueuePath = EscapePowerShellSingleQuotedString(session.QueuePath);
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                action();
+                completion.SetResult();
+            }
+            catch (Exception exception)
+            {
+                completion.SetException(exception);
+            }
+        });
 
-        return $$"""
-$queuePath = '{{escapedQueuePath}}'
-$host.UI.RawUI.WindowTitle = '{{escapedTitle}}'
-Write-Host 'Linked to SimpleNotepad. Waiting for selected commands...' -ForegroundColor Cyan
-if (!(Test-Path -LiteralPath $queuePath)) {
-    New-Item -ItemType File -Path $queuePath -Force | Out-Null
-}
-$position = 0L
-while ($true) {
-    Start-Sleep -Milliseconds 350
-    if (!(Test-Path -LiteralPath $queuePath)) {
-        continue
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.IsBackground = true;
+        thread.Start();
+        return completion.Task;
     }
 
-    $stream = [System.IO.File]::Open($queuePath, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
-    try {
-        if ($stream.Length -lt $position) {
-            $position = 0L
-        }
+    private static Forms.DataObject? TryCreateClipboardSnapshot()
+    {
+        try
+        {
+            var dataObject = Forms.Clipboard.GetDataObject();
+            if (dataObject is null)
+            {
+                return null;
+            }
 
-        $stream.Seek($position, [System.IO.SeekOrigin]::Begin) | Out-Null
-        $reader = [System.IO.StreamReader]::new($stream, [System.Text.Encoding]::UTF8, $false, 4096, $true)
-        try {
-            while (($line = $reader.ReadLine()) -ne $null) {
-                if ([string]::IsNullOrWhiteSpace($line)) {
-                    continue
+            var snapshot = new Forms.DataObject();
+            foreach (var format in dataObject.GetFormats(autoConvert: false))
+            {
+                try
+                {
+                    snapshot.SetData(format, dataObject.GetData(format, autoConvert: false));
                 }
-
-                try {
-                    $command = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($line))
-                }
-                catch {
-                    Write-Warning 'SimpleNotepad sent a command that could not be decoded.'
-                    continue
-                }
-
-                Write-Host ''
-                Write-Host ('SimpleNotepad> ' + $command) -ForegroundColor Yellow
-                try {
-                    Invoke-Expression $command
-                }
-                catch {
-                    Write-Error $_
+                catch (ExternalException)
+                {
                 }
             }
-        }
-        finally {
-            $reader.Dispose()
-        }
 
-        $position = $stream.Position
+            return snapshot;
+        }
+        catch (ExternalException)
+        {
+            return null;
+        }
     }
-    finally {
-        $stream.Dispose()
+
+    private static void TryRestoreClipboardData(Forms.IDataObject data)
+    {
+        try
+        {
+            Forms.Clipboard.SetDataObject(data, copy: true);
+        }
+        catch (ExternalException)
+        {
+        }
     }
-}
-""";
+
+    private static string EscapePowerShellSingleQuotedString(string value)
+    {
+        return value.Replace("'", "''", StringComparison.Ordinal);
     }
 
     private static string CreateAdminCommandScript(LinkedPowerShellSession session, string command)
@@ -288,15 +308,15 @@ catch {
 """;
     }
 
-    private static string EscapePowerShellSingleQuotedString(string value)
-    {
-        return value.Replace("'", "''", StringComparison.Ordinal);
-    }
+    [DllImport("user32.dll")]
+    private static extern bool SetForegroundWindow(IntPtr hWnd);
 
-    private sealed class LinkedPowerShellSession(string id, string queuePath)
+    [DllImport("user32.dll")]
+    private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+    private sealed class LinkedPowerShellSession(string id)
     {
         public string Id { get; } = id;
-        public string QueuePath { get; } = queuePath;
         public Process? Process { get; set; }
     }
 }
