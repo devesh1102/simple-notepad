@@ -115,6 +115,19 @@ public sealed class SessionStorageService
         return AtomicWriteTextAsync(GetSessionContentPath(session), content, cancellationToken);
     }
 
+    public Task DeleteSessionAsync(NoteSession session, CancellationToken cancellationToken = default)
+    {
+        EnsureStorageFolders();
+        var path = GetSessionContentPath(session);
+        var backupPath = GetBackupPath(path);
+
+        TryDeleteFile(path);
+        TryDeleteFile(backupPath);
+        PruneReplacementBackups(backupPath);
+
+        return Task.CompletedTask;
+    }
+
     public NoteSession CreateSession(string? title = null)
     {
         EnsureStorageFolders();
@@ -127,6 +140,7 @@ public sealed class SessionStorageService
             Id = id,
             Title = string.IsNullOrWhiteSpace(title) ? "Untitled" : title.Trim(),
             FilePath = Path.Combine(SessionsFolderName, $"{id}.txt"),
+            Preview = string.Empty,
             CreatedAt = now,
             UpdatedAt = now,
             ExpiresAt = now.AddDays(7),

@@ -8,6 +8,8 @@ public sealed class NoteSession
 
     public required string FilePath { get; set; }
 
+    public string Preview { get; set; } = string.Empty;
+
     public DateTimeOffset CreatedAt { get; set; }
 
     public DateTimeOffset UpdatedAt { get; set; }

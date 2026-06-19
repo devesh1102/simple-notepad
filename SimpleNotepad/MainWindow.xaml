@@ -35,53 +35,57 @@
                            FontWeight="SemiBold"
                            Foreground="#1F2937" />
 
-                <Button Grid.Row="1"
+                <Button x:Name="NewSessionButton"
+                        Grid.Row="1"
                         Margin="0,14,0,12"
                         Padding="10,7"
                         HorizontalContentAlignment="Left"
-                        Content="+ New Session" />
+                        Content="+ New Session"
+                        Click="NewSessionButton_Click" />
 
-                <TextBox Grid.Row="2"
+                <TextBox x:Name="SessionSearchBox"
+                         Grid.Row="2"
                          Margin="0,0,0,12"
                          Padding="8,6"
-                         ToolTip="Search sessions" />
+                         ToolTip="Search sessions"
+                         TextChanged="SessionSearchBox_TextChanged" />
 
-                <ListBox Grid.Row="3"
+                <ListBox x:Name="SessionsList"
+                         Grid.Row="3"
                          BorderThickness="0"
                          Background="Transparent"
-                         SelectedIndex="0">
-                    <ListBoxItem Padding="8">
-                        <StackPanel>
-                            <TextBlock Text="API Debug Notes"
-                                       FontWeight="SemiBold"
-                                       Foreground="#111827" />
-                            <TextBlock Margin="0,3,0,0"
-                                       Text="expires in 6 days"
-                                       FontSize="12"
-                                       Foreground="#6B7280" />
-                            <TextBlock Margin="0,3,0,0"
-                                       Text="First request payload..."
-                                       FontSize="12"
-                                       Foreground="#6B7280"
-                                       TextTrimming="CharacterEllipsis" />
-                        </StackPanel>
-                    </ListBoxItem>
-                    <ListBoxItem Padding="8">
-                        <StackPanel>
-                            <TextBlock Text="Meeting Notes"
-                                       FontWeight="SemiBold"
-                                       Foreground="#111827" />
-                            <TextBlock Margin="0,3,0,0"
-                                       Text="expires in 4 days"
-                                       FontSize="12"
-                                       Foreground="#6B7280" />
-                            <TextBlock Margin="0,3,0,0"
-                                       Text="Follow up on design..."
-                                       FontSize="12"
-                                       Foreground="#6B7280"
-                                       TextTrimming="CharacterEllipsis" />
-                        </StackPanel>
-                    </ListBoxItem>
+                         SelectionChanged="SessionsList_SelectionChanged">
+                    <ListBox.ContextMenu>
+                        <ContextMenu>
+                            <MenuItem Header="Rename" Click="RenameSession_Click" />
+                            <MenuItem Header="Delete" Click="DeleteSession_Click" />
+                            <Separator />
+                            <MenuItem Header="Pin/Unpin" Click="PinSession_Click" />
+                        </ContextMenu>
+                    </ListBox.ContextMenu>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Margin="4">
+                                <TextBlock Text="{Binding Title}"
+                                           FontWeight="SemiBold"
+                                           Foreground="#111827"
+                                           TextTrimming="CharacterEllipsis" />
+                                <TextBlock Margin="0,3,0,0"
+                                           Text="{Binding ExpiryText}"
+                                           FontSize="12"
+                                           Foreground="#6B7280" />
+                                <TextBlock Margin="0,3,0,0"
+                                           Text="{Binding LastModifiedText}"
+                                           FontSize="12"
+                                           Foreground="#6B7280" />
+                                <TextBlock Margin="0,3,0,0"
+                                           Text="{Binding Preview}"
+                                           FontSize="12"
+                                           Foreground="#6B7280"
+                                           TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
                 </ListBox>
             </Grid>
         </Border>
@@ -104,12 +108,17 @@
                     BorderBrush="#D7DCE2"
                     BorderThickness="0,0,0,1">
                 <DockPanel LastChildFill="True">
-                    <TextBlock Text="API Debug Notes"
+                    <TextBox x:Name="SessionTitleBox"
+                             Text="Untitled"
                                FontSize="18"
                                FontWeight="SemiBold"
                                Foreground="#111827"
-                               VerticalAlignment="Center" />
-                    <TextBlock DockPanel.Dock="Right"
+                             BorderThickness="0"
+                             Background="Transparent"
+                             VerticalAlignment="Center"
+                             TextChanged="SessionTitleBox_TextChanged" />
+                    <TextBlock x:Name="SaveStateText"
+                               DockPanel.Dock="Right"
                                Text="Saved"
                                Foreground="#059669"
                                VerticalAlignment="Center" />
@@ -156,7 +165,7 @@
                                        FontSize="14"
                                        Padding="8"
                                        WordWrap="True"
-                                       Text="Welcome to Simple Notepad." />
+                                       TextChanged="Editor_TextChanged" />
             </Border>
 
             <Border Grid.Row="3"
@@ -164,7 +173,8 @@
                     Background="#FFFFFF"
                     BorderBrush="#D7DCE2"
                     BorderThickness="0,1,0,0">
-                <TextBlock Text="Ln 1, Col 1 | 27 chars | Saved"
+                <TextBlock x:Name="StatusText"
+                           Text="Ln 1, Col 1 | 0 chars | Saved"
                            Foreground="#4B5563" />
             </Border>
         </Grid>
