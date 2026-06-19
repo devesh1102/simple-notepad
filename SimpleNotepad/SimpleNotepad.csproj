@@ -7,6 +7,14 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
+    <Version>1.0.0</Version>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <FileVersion>1.0.0.0</FileVersion>
+    <Product>Simple Notepad</Product>
+    <AssemblyTitle>Simple Notepad</AssemblyTitle>
+    <Company>Simple Notepad</Company>
+    <Authors>Simple Notepad</Authors>
+    <Description>Lightweight Windows notepad with sessions, find/replace, JSON tooling, and linked PowerShell.</Description>
   </PropertyGroup>
 
   <ItemGroup>
