@@ -75,6 +75,12 @@
             </Setter>
         </Style>
 
+        <!-- Dark CheckBox style -->
+        <Style TargetType="CheckBox">
+            <Setter Property="Foreground" Value="#D4D4D4" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+
         <!-- Dark ListBoxItem style -->
         <Style TargetType="ListBoxItem">
             <Setter Property="Background" Value="Transparent" />
@@ -266,23 +272,50 @@
                                Foreground="#D4D4D4"
                                VerticalAlignment="Center"
                                Margin="0,0,6,0" />
-                    <TextBox Width="180"
-                             Margin="0,0,10,0" />
+                    <TextBox x:Name="FindTextBox"
+                             Width="180"
+                             Margin="0,0,10,0"
+                             Padding="6,4"
+                             TextChanged="FindTextBox_TextChanged"
+                             PreviewKeyDown="FindReplaceTextBox_PreviewKeyDown" />
                     <TextBlock Text="Replace"
                                Foreground="#D4D4D4"
                                VerticalAlignment="Center"
                                Margin="0,0,6,0" />
-                    <TextBox Width="180"
-                             Margin="0,0,10,0" />
+                    <TextBox x:Name="ReplaceTextBox"
+                             Width="180"
+                             Margin="0,0,10,0"
+                             Padding="6,4"
+                             PreviewKeyDown="FindReplaceTextBox_PreviewKeyDown" />
                     <Button Content="Prev"
-                            Margin="0,0,6,0" />
+                            Margin="0,0,6,0"
+                            Click="FindPreviousButton_Click" />
                     <Button Content="Next"
-                            Margin="0,0,6,0" />
+                            Margin="0,0,6,0"
+                            Click="FindNextButton_Click" />
                     <Button Content="Replace"
-                            Margin="0,0,6,0" />
+                            Margin="0,0,6,0"
+                            Click="ReplaceButton_Click" />
                     <Button Content="All"
-                            Margin="0,0,6,0" />
-                    <Button Content="x" />
+                            Margin="0,0,10,0"
+                            Click="ReplaceAllButton_Click" />
+                    <CheckBox x:Name="MatchCaseCheckBox"
+                             Content="Case"
+                             Margin="0,0,10,0"
+                             Checked="FindOptionsChanged"
+                             Unchecked="FindOptionsChanged" />
+                    <CheckBox x:Name="WholeWordCheckBox"
+                             Content="Whole word"
+                             Margin="0,0,10,0"
+                             Checked="FindOptionsChanged"
+                             Unchecked="FindOptionsChanged" />
+                    <TextBlock x:Name="MatchCountText"
+                              Foreground="#9DA5B4"
+                              VerticalAlignment="Center"
+                              Margin="0,0,10,0"
+                              Text="0 matches" />
+                    <Button Content="x"
+                            Click="CloseFindReplaceButton_Click" />
                 </DockPanel>
             </Border>
 

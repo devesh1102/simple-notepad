@@ -327,6 +327,7 @@ public partial class MainWindow : Window
         finally
         {
             _isLoadingSession = false;
+            UpdateFindMatchCount();
         }
     }
 
@@ -433,6 +434,7 @@ public partial class MainWindow : Window
         SetSaveState("Unsaved", Color.FromRgb(0xD7, 0xBA, 0x7D));
         ScheduleAutosave();
         UpdateStatus();
+        UpdateFindMatchCount();
     }
 
     private void SessionTitleBox_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
@@ -547,6 +549,10 @@ public partial class MainWindow : Window
 
         switch (e.Key)
         {
+            case Key.F:
+                OpenFindReplaceBar();
+                return;
+
             case Key.N:
                 await CreateNewSessionWithLockAsync();
                 return;
@@ -720,6 +726,223 @@ public partial class MainWindow : Window
         SaveStateText.Text = state;
         SaveStateText.Foreground = new SolidColorBrush(color);
         UpdateStatus();
+    }
+
+    private void OpenFindReplaceBar()
+    {
+        FindReplaceBar.Visibility = Visibility.Visible;
+
+        if (!string.IsNullOrEmpty(Editor.SelectedText) && !Editor.SelectedText.Contains('\r') && !Editor.SelectedText.Contains('\n'))
+        {
+            FindTextBox.Text = Editor.SelectedText;
+        }
+
+        FindTextBox.Focus();
+        FindTextBox.SelectAll();
+        UpdateFindMatchCount();
+    }
+
+    private void CloseFindReplaceButton_Click(object sender, RoutedEventArgs e)
+    {
+        FindReplaceBar.Visibility = Visibility.Collapsed;
+        Editor.Focus();
+    }
+
+    private void FindNextButton_Click(object sender, RoutedEventArgs e)
+    {
+        FindNext();
+    }
+
+    private void FindPreviousButton_Click(object sender, RoutedEventArgs e)
+    {
+        FindPrevious();
+    }
+
+    private void ReplaceButton_Click(object sender, RoutedEventArgs e)
+    {
+        ReplaceCurrent();
+    }
+
+    private void ReplaceAllButton_Click(object sender, RoutedEventArgs e)
+    {
+        ReplaceAll();
+    }
+
+    private void FindTextBox_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
+    {
+        UpdateFindMatchCount();
+    }
+
+    private void FindOptionsChanged(object sender, RoutedEventArgs e)
+    {
+        UpdateFindMatchCount();
+    }
+
+    private void FindReplaceTextBox_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Enter)
+        {
+            return;
+        }
+
+        e.Handled = true;
+        var restoreFocusTarget = sender as TextBox;
+        if ((Keyboard.Modifiers & ModifierKeys.Shift) != 0)
+        {
+            FindPrevious();
+            restoreFocusTarget?.Focus();
+            return;
+        }
+
+        FindNext();
+        restoreFocusTarget?.Focus();
+    }
+
+    private void FindNext()
+    {
+        var matches = GetFindMatches();
+        if (matches.Count == 0)
+        {
+            UpdateFindMatchCount(0);
+            return;
+        }
+
+        var startOffset = Editor.SelectionLength > 0
+            ? Editor.SelectionStart + Editor.SelectionLength
+            : Editor.TextArea.Caret.Offset;
+        var matchIndex = matches.FindIndex(candidate => candidate.Start >= startOffset);
+        var match = matchIndex >= 0 ? matches[matchIndex] : matches[0];
+        SelectFindMatch(match);
+        UpdateFindMatchCount(matches.Count);
+    }
+
+    private void FindPrevious()
+    {
+        var matches = GetFindMatches();
+        if (matches.Count == 0)
+        {
+            UpdateFindMatchCount(0);
+            return;
+        }
+
+        var startOffset = Editor.SelectionLength > 0
+            ? Editor.SelectionStart - 1
+            : Editor.TextArea.Caret.Offset - 1;
+        var matchIndex = matches.FindLastIndex(candidate => candidate.Start <= startOffset);
+        var match = matchIndex >= 0 ? matches[matchIndex] : matches[^1];
+        SelectFindMatch(match);
+        UpdateFindMatchCount(matches.Count);
+    }
+
+    private void ReplaceCurrent()
+    {
+        var matches = GetFindMatches();
+        if (matches.Count == 0)
+        {
+            UpdateFindMatchCount(0);
+            return;
+        }
+
+        var currentMatch = matches.FirstOrDefault(match => match.Start == Editor.SelectionStart && match.Length == Editor.SelectionLength);
+        if (currentMatch.Length == 0)
+        {
+            FindNext();
+            return;
+        }
+
+        var replacement = ReplaceTextBox.Text;
+        Editor.Document.Replace(currentMatch.Start, currentMatch.Length, replacement);
+        Editor.Select(currentMatch.Start, replacement.Length);
+        FindNext();
+    }
+
+    private void ReplaceAll()
+    {
+        var matches = GetFindMatches();
+        if (matches.Count == 0)
+        {
+            UpdateFindMatchCount(0);
+            return;
+        }
+
+        var replacement = ReplaceTextBox.Text;
+        for (var i = matches.Count - 1; i >= 0; i--)
+        {
+            var match = matches[i];
+            Editor.Document.Replace(match.Start, match.Length, replacement);
+        }
+
+        Editor.TextArea.Caret.Offset = 0;
+        Editor.Select(0, 0);
+        UpdateFindMatchCount();
+    }
+
+    private List<(int Start, int Length)> GetFindMatches()
+    {
+        var query = FindTextBox.Text;
+        var text = Editor.Text;
+        var matches = new List<(int Start, int Length)>();
+
+        if (string.IsNullOrEmpty(query) || string.IsNullOrEmpty(text))
+        {
+            return matches;
+        }
+
+        var comparison = MatchCaseCheckBox.IsChecked == true ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
+        var offset = 0;
+        while (offset <= text.Length - query.Length)
+        {
+            var index = text.IndexOf(query, offset, comparison);
+            if (index < 0)
+            {
+                break;
+            }
+
+            if (WholeWordCheckBox.IsChecked != true || IsWholeWordMatch(text, index, query.Length))
+            {
+                matches.Add((index, query.Length));
+            }
+
+            offset = index + Math.Max(query.Length, 1);
+        }
+
+        return matches;
+    }
+
+    private void SelectFindMatch((int Start, int Length) match)
+    {
+        Editor.Focus();
+        Editor.Select(match.Start, match.Length);
+        Editor.TextArea.Caret.Offset = match.Start + match.Length;
+        Editor.ScrollToLine(Editor.Document.GetLineByOffset(match.Start).LineNumber);
+    }
+
+    private void UpdateFindMatchCount()
+    {
+        if (FindReplaceBar.Visibility != Visibility.Visible)
+        {
+            return;
+        }
+
+        UpdateFindMatchCount(GetFindMatches().Count);
+    }
+
+    private void UpdateFindMatchCount(int count)
+    {
+        MatchCountText.Text = count == 1 ? "1 match" : $"{count} matches";
+    }
+
+    private static bool IsWholeWordMatch(string text, int start, int length)
+    {
+        var beforeIndex = start - 1;
+        var afterIndex = start + length;
+        return (beforeIndex < 0 || !IsWordCharacter(text[beforeIndex])) &&
+               (afterIndex >= text.Length || !IsWordCharacter(text[afterIndex]));
+    }
+
+    private static bool IsWordCharacter(char character)
+    {
+        return char.IsLetterOrDigit(character) || character == '_';
     }
 
     private void SessionSearchBox_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
