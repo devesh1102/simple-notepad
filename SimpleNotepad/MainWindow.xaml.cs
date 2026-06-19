@@ -32,6 +32,7 @@ public partial class MainWindow : Window
     private readonly SessionStorageService _sessionStorage = new();
     private readonly AppSettingsService _settingsService = new();
     private readonly LinkedPowerShellService _linkedPowerShell = new();
+    private readonly AiRewriteService _rewriteService = new();
     private readonly ObservableCollection<SessionListItem> _sessions = [];
     private readonly ICollectionView _sessionsView;
 
@@ -77,6 +78,7 @@ public partial class MainWindow : Window
 
         ApplyTheme("Dark");
         UpdateJsonState();
+        UpdateAiState();
 
         Loaded += MainWindow_Loaded;
         Closing += MainWindow_Closing;
@@ -88,6 +90,7 @@ public partial class MainWindow : Window
         {
             UpdateJsonState();
             UpdateLinkedPowerShellState();
+            UpdateAiState();
         };
     }
 
@@ -216,6 +219,7 @@ public partial class MainWindow : Window
 
         ApplyWindowBounds();
         UpdateStatus();
+        UpdateAiState();
     }
 
     private void ApplyWindowBounds()
@@ -1076,6 +1080,150 @@ public partial class MainWindow : Window
     {
         UpdateJsonState();
         UpdateLinkedPowerShellState();
+        UpdateAiState();
+    }
+
+    private void UpdateAiState()
+    {
+        var configured = _rewriteService.IsConfigured(_settings);
+        var hasSelection = Editor.SelectionLength > 0;
+        var hasContent = !string.IsNullOrWhiteSpace(Editor.Text);
+
+        RewriteButton.IsEnabled = configured && hasSelection;
+        RewriteButton.ToolTip = configured
+            ? (hasSelection ? "Rewrite the selected text with AI" : "Select text to rewrite")
+            : "Configure Azure OpenAI first (AI…)";
+
+        RewriteMenuItem.IsEnabled = configured && hasSelection;
+        GenerateTitleMenuItem.IsEnabled = configured && hasContent;
+    }
+
+    private void AiSettingsButton_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new AiSettingsWindow(_settings, _rewriteService) { Owner = this };
+        if (dialog.ShowDialog() == true)
+        {
+            _ = PersistSettingsAsync();
+            UpdateAiState();
+        }
+    }
+
+    private bool EnsureAiConfigured()
+    {
+        if (_rewriteService.IsConfigured(_settings))
+        {
+            return true;
+        }
+
+        var result = MessageBox.Show(
+            "AI features are not configured yet. Set up Azure OpenAI now?",
+            "Simple Notepad",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Information);
+
+        if (result == MessageBoxResult.Yes)
+        {
+            AiSettingsButton_Click(this, new RoutedEventArgs());
+        }
+
+        return _rewriteService.IsConfigured(_settings);
+    }
+
+    private void RewriteButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (!EnsureAiConfigured())
+        {
+            return;
+        }
+
+        if (Editor.SelectionLength == 0)
+        {
+            MessageBox.Show(
+                "Select the text you want to rewrite first.",
+                "Simple Notepad",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            return;
+        }
+
+        var selectionStart = Editor.SelectionStart;
+        var selectionLength = Editor.SelectionLength;
+        var originalText = Editor.SelectedText;
+
+        var dialog = new RewritePreviewWindow(_settings, _rewriteService, originalText) { Owner = this };
+        if (dialog.ShowDialog() != true)
+        {
+            return;
+        }
+
+        ReplaceRange(selectionStart, selectionLength, originalText, dialog.AcceptedText);
+    }
+
+    private void ReplaceRange(int start, int length, string expectedText, string newText)
+    {
+        var document = Editor.Document;
+
+        if (start < 0 || start + length > document.TextLength ||
+            document.GetText(start, length) != expectedText)
+        {
+            MessageBox.Show(
+                "The document changed while the rewrite was in progress, so the text was not replaced.",
+                "Simple Notepad",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            return;
+        }
+
+        using (document.RunUpdate())
+        {
+            document.Replace(start, length, newText);
+        }
+
+        Editor.Select(start, newText.Length);
+        Editor.Focus();
+    }
+
+    private async void GenerateTitleMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (!EnsureAiConfigured() || _currentSession is null)
+        {
+            return;
+        }
+
+        var sessionId = _currentSession.Id;
+        var content = Editor.Text;
+        if (string.IsNullOrWhiteSpace(content))
+        {
+            MessageBox.Show(
+                "There is no content to generate a title from.",
+                "Simple Notepad",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            return;
+        }
+
+        GenerateTitleMenuItem.IsEnabled = false;
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            var title = await _rewriteService.GenerateTitleAsync(_settings, content, cts.Token);
+            if (!string.IsNullOrWhiteSpace(title) && _currentSession?.Id == sessionId)
+            {
+                SessionTitleBox.Text = title;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            ShowJsonMessage("Generating a title timed out.");
+        }
+        catch (Exception exception)
+        {
+            ShowError("Simple Notepad could not generate a title.", exception);
+        }
+        finally
+        {
+            GenerateTitleMenuItem.IsEnabled = true;
+        }
     }
 
     private void FormatJsonSelectionOrDocument()

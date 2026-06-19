@@ -264,6 +264,18 @@
                                Content="VS Code"
                                ToolTip="Open selected JSON or the full note in Visual Studio Code"
                                Click="OpenJsonInVsCodeButton_Click" />
+                        <Button x:Name="RewriteButton"
+                               Margin="0,0,8,0"
+                               Padding="8,3"
+                               Content="Rewrite"
+                               ToolTip="Rewrite the selected text with AI"
+                               Click="RewriteButton_Click" />
+                        <Button x:Name="AiSettingsButton"
+                               Margin="0,0,12,0"
+                               Padding="8,3"
+                               Content="AI…"
+                               ToolTip="Configure Azure OpenAI for AI features"
+                               Click="AiSettingsButton_Click" />
                         <Button x:Name="WordWrapButton"
                                Margin="0,0,12,0"
                                Padding="8,3"
@@ -401,6 +413,13 @@
                             <MenuItem x:Name="OpenJsonInVsCodeMenuItem"
                                       Header="Open JSON in VS Code"
                                       Click="OpenJsonInVsCodeButton_Click" />
+                            <Separator />
+                            <MenuItem x:Name="RewriteMenuItem"
+                                      Header="Rewrite with AI"
+                                      Click="RewriteButton_Click" />
+                            <MenuItem x:Name="GenerateTitleMenuItem"
+                                      Header="Generate title with AI"
+                                      Click="GenerateTitleMenuItem_Click" />
                         </ContextMenu>
                     </avalonEdit:TextEditor.ContextMenu>
                 </avalonEdit:TextEditor>

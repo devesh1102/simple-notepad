@@ -21,4 +21,15 @@ public sealed class AppSettings
     public double? WindowTop { get; set; }
 
     public bool WindowMaximized { get; set; }
+
+    public string? AiEndpoint { get; set; }
+
+    public string? AiDeployment { get; set; }
+
+    /// <summary>
+    /// DPAPI-protected (CurrentUser) Azure OpenAI API key as Base64. Never stored in plaintext.
+    /// </summary>
+    public string? AiApiKeyProtected { get; set; }
+
+    public double AiTemperature { get; set; } = 0.7;
 }
