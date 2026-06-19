@@ -823,6 +823,11 @@ public partial class MainWindow : Window
             return target;
         }
 
+        if (JsonFoldingStrategy.TryFindFirstJsonTarget(Editor.Text, out target))
+        {
+            return target;
+        }
+
         return (Editor.Text, 0, Editor.Text.Length);
     }
 
@@ -1704,6 +1709,24 @@ public partial class MainWindow : Window
 
             var match = bestMatch.Value;
             target = (text[match.Start..match.End], match.Start, match.End - match.Start);
+            return true;
+        }
+
+        public static bool TryFindFirstJsonTarget(string text, out (string Text, int Start, int Length) target)
+        {
+            target = default;
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return false;
+            }
+
+            var firstMatch = FindJsonCandidates(text).FirstOrDefault();
+            if (firstMatch == default)
+            {
+                return false;
+            }
+
+            target = (text[firstMatch.Start..firstMatch.End], firstMatch.Start, firstMatch.End - firstMatch.Start);
             return true;
         }
 
