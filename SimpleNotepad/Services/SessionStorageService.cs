@@ -63,6 +63,14 @@ public sealed class SessionStorageService
             await QuarantineFileAsync(_indexPath, cancellationToken);
             return await TryLoadBackupIndexAsync(cancellationToken);
         }
+        catch (IOException)
+        {
+            return await TryLoadBackupIndexAsync(cancellationToken);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return await TryLoadBackupIndexAsync(cancellationToken);
+        }
     }
 
     public Task SaveIndexAsync(IEnumerable<NoteSession> sessions, CancellationToken cancellationToken = default)
@@ -181,6 +189,14 @@ public sealed class SessionStorageService
             await QuarantineFileAsync(backupPath, cancellationToken);
             return [];
         }
+        catch (IOException)
+        {
+            return [];
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return [];
+        }
     }
 
     private static async Task AtomicWriteTextAsync(string path, string content, CancellationToken cancellationToken)
@@ -196,10 +212,10 @@ public sealed class SessionStorageService
         var tempPath = Path.Combine(directory, $"{Path.GetFileName(path)}.{Guid.NewGuid():N}.tmp");
         var backupPath = GetBackupPath(path);
 
-        await File.WriteAllTextAsync(tempPath, content, StrictUtf8, cancellationToken);
-
         try
         {
+            await File.WriteAllTextAsync(tempPath, content, StrictUtf8, cancellationToken);
+
             if (File.Exists(path))
             {
                 if (File.Exists(backupPath))
@@ -217,10 +233,24 @@ public sealed class SessionStorageService
         {
             if (File.Exists(tempPath))
             {
-                File.Delete(tempPath);
+                TryDeleteFile(tempPath);
             }
 
             throw;
+        }
+    }
+
+    private static void TryDeleteFile(string path)
+    {
+        try
+        {
+            File.Delete(path);
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
         }
     }
 
