@@ -151,18 +151,39 @@
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
 
-                <TextBlock Text="Sessions"
-                           FontSize="20"
-                           FontWeight="SemiBold"
-                           Foreground="{DynamicResource Brush.PrimaryText}" />
+                <DockPanel LastChildFill="True">
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Button x:Name="SyncSettingsButton"
+                                Padding="6,3" Margin="0,0,6,0"
+                                Content="⚙"
+                                ToolTip="Configure cloud sync"
+                                Click="SyncSettingsButton_Click" />
+                        <Button x:Name="SyncButton"
+                                Padding="8,3"
+                                Content="Sync"
+                                ToolTip="Sync sessions across your devices"
+                                Click="SyncButton_Click" />
+                    </StackPanel>
+                    <TextBlock Text="Sessions"
+                               FontSize="20"
+                               FontWeight="SemiBold"
+                               VerticalAlignment="Center"
+                               Foreground="{DynamicResource Brush.PrimaryText}" />
+                </DockPanel>
 
-                <Button x:Name="NewSessionButton"
-                        Grid.Row="1"
-                        Margin="0,14,0,12"
-                        Padding="10,7"
-                        HorizontalContentAlignment="Left"
-                        Content="+ New Session"
-                        Click="NewSessionButton_Click" />
+                <StackPanel Grid.Row="1" Margin="0,14,0,12">
+                    <Button x:Name="NewSessionButton"
+                            Padding="10,7"
+                            HorizontalContentAlignment="Left"
+                            Content="+ New Session"
+                            Click="NewSessionButton_Click" />
+                    <TextBlock x:Name="SyncStatusText"
+                               Margin="2,6,0,0"
+                               FontSize="12"
+                               TextWrapping="Wrap"
+                               Foreground="{DynamicResource Brush.SecondaryText}"
+                               Text="Sync not configured" />
+                </StackPanel>
 
                 <TextBox x:Name="SessionSearchBox"
                          Grid.Row="2"
@@ -180,34 +201,50 @@
                          SelectionChanged="SessionsList_SelectionChanged">
                     <ListBox.ContextMenu>
                         <ContextMenu>
-                            <MenuItem Header="Rename" Click="RenameSession_Click" />
-                            <MenuItem Header="Delete" Click="DeleteSession_Click" />
+                            <MenuItem x:Name="DuplicateToEditMenuItem" Header="Duplicate to edit" Click="DuplicateToEdit_Click" />
+                            <MenuItem x:Name="RenameSessionMenuItem" Header="Rename" Click="RenameSession_Click" />
+                            <MenuItem x:Name="DeleteSessionMenuItem" Header="Delete" Click="DeleteSession_Click" />
                             <Separator />
-                            <MenuItem Header="Pin/Unpin" Click="PinSession_Click" />
+                            <MenuItem x:Name="PinSessionMenuItem" Header="Pin/Unpin" Click="PinSession_Click" />
                             <MenuItem Header="Export…" Click="ExportSession_Click" />
                         </ContextMenu>
                     </ListBox.ContextMenu>
                     <ListBox.ItemTemplate>
                         <DataTemplate>
-                            <StackPanel Margin="4">
-                                <TextBlock Text="{Binding Title}"
-                                           FontWeight="SemiBold"
-                                           Foreground="{DynamicResource Brush.PrimaryText}"
-                                           TextTrimming="CharacterEllipsis" />
-                                <TextBlock Margin="0,3,0,0"
-                                           Text="{Binding ExpiryText}"
-                                           FontSize="12"
-                                           Foreground="{DynamicResource Brush.SecondaryText}" />
-                                <TextBlock Margin="0,3,0,0"
-                                           Text="{Binding LastModifiedText}"
-                                           FontSize="12"
-                                           Foreground="{DynamicResource Brush.SecondaryText}" />
-                                <TextBlock Margin="0,3,0,0"
-                                           Text="{Binding Preview}"
-                                           FontSize="12"
-                                           Foreground="{DynamicResource Brush.SecondaryText}"
-                                           TextTrimming="CharacterEllipsis" />
-                            </StackPanel>
+                            <Grid Margin="4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="3" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Border Grid.Column="0" Width="3" CornerRadius="2"
+                                        Margin="0,0,6,0"
+                                        Background="{Binding AccentBrush}" />
+                                <StackPanel Grid.Column="1">
+                                    <TextBlock Text="{Binding Title}"
+                                               FontWeight="SemiBold"
+                                               Foreground="{DynamicResource Brush.PrimaryText}"
+                                               TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Margin="0,3,0,0"
+                                               Text="{Binding OriginLabel}"
+                                               Visibility="{Binding OriginVisibility}"
+                                               FontSize="12"
+                                               Foreground="{Binding AccentBrush}"
+                                               TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Margin="0,3,0,0"
+                                               Text="{Binding ExpiryText}"
+                                               FontSize="12"
+                                               Foreground="{DynamicResource Brush.SecondaryText}" />
+                                    <TextBlock Margin="0,3,0,0"
+                                               Text="{Binding LastModifiedText}"
+                                               FontSize="12"
+                                               Foreground="{DynamicResource Brush.SecondaryText}" />
+                                    <TextBlock Margin="0,3,0,0"
+                                               Text="{Binding Preview}"
+                                               FontSize="12"
+                                               Foreground="{DynamicResource Brush.SecondaryText}"
+                                               TextTrimming="CharacterEllipsis" />
+                                </StackPanel>
+                            </Grid>
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>

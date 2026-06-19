@@ -33,6 +33,8 @@ public partial class MainWindow : Window
     private readonly AppSettingsService _settingsService = new();
     private readonly LinkedPowerShellService _linkedPowerShell = new();
     private readonly AiRewriteService _rewriteService = new();
+    private readonly CloudSyncService _syncService = new();
+    private bool _isSyncing;
     private readonly ObservableCollection<SessionListItem> _sessions = [];
     private readonly ICollectionView _sessionsView;
 
@@ -375,7 +377,7 @@ public partial class MainWindow : Window
 
         if (sessions.Count == 0)
         {
-            var session = _sessionStorage.CreateSession();
+            var session = CreateOwnedSession();
             sessions.Add(session);
             await _sessionStorage.SaveContentAsync(session, string.Empty);
             await _sessionStorage.SaveIndexAsync(sessions);
@@ -388,6 +390,8 @@ public partial class MainWindow : Window
         {
             SessionsList.SelectedItem = selectedItem;
         }
+
+        UpdateSyncStatus();
     }
 
     private void ReplaceSessionItems(IEnumerable<NoteSession> sessions)
@@ -396,7 +400,8 @@ public partial class MainWindow : Window
 
         _sessions.Clear();
         foreach (var session in snapshot
-                     .OrderByDescending(session => session.IsPinned)
+                     .OrderBy(session => session.IsRemote)
+                     .ThenByDescending(session => session.IsPinned)
                      .ThenByDescending(session => session.UpdatedAt))
         {
             _sessions.Add(new SessionListItem(session));
@@ -479,12 +484,20 @@ public partial class MainWindow : Window
     {
         await SaveCurrentSessionAsync();
 
-        var session = _sessionStorage.CreateSession();
+        var session = CreateOwnedSession();
         await _sessionStorage.SaveContentAsync(session, string.Empty);
 
         ReplaceSessionItems(_sessions.Select(item => item.Session).Append(session));
         await SaveIndexAsync();
         SessionsList.SelectedItem = _sessions.FirstOrDefault(item => item.Id == session.Id);
+    }
+
+    private NoteSession CreateOwnedSession(string? title = null)
+    {
+        var session = _sessionStorage.CreateSession(title);
+        session.OriginDeviceId = _settings.DeviceId;
+        session.Dirty = true;
+        return session;
     }
 
     private async void SessionsList_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
@@ -531,8 +544,9 @@ public partial class MainWindow : Window
         {
             if (!_isClosingSaveInProgress)
             {
-                Editor.IsReadOnly = false;
-                SessionTitleBox.IsReadOnly = false;
+                var readOnly = _currentSession?.IsRemote ?? false;
+                Editor.IsReadOnly = readOnly;
+                SessionTitleBox.IsReadOnly = readOnly;
             }
 
             _selectionSemaphore.Release();
@@ -580,7 +594,7 @@ public partial class MainWindow : Window
 
     private async Task SaveCurrentSessionAsync(bool refreshSessions = true)
     {
-        if (_currentSession is null)
+        if (_currentSession is null || _currentSession.IsRemote)
         {
             return;
         }
@@ -602,6 +616,7 @@ public partial class MainWindow : Window
                 _currentSession.Preview = preview;
                 _currentSession.UpdatedAt = DateTimeOffset.UtcNow;
                 _currentSession.ExpiresAt = _currentSession.UpdatedAt.AddDays(7);
+                _currentSession.Dirty = true;
 
                 await _sessionStorage.SaveContentAsync(_currentSession, content);
                 _hasUnsavedContent = _editVersion != versionToSave;
@@ -1086,16 +1101,164 @@ public partial class MainWindow : Window
     private void UpdateAiState()
     {
         var configured = _rewriteService.IsConfigured(_settings);
+        var isRemote = _currentSession?.IsRemote ?? false;
         var hasSelection = Editor.SelectionLength > 0;
         var hasContent = !string.IsNullOrWhiteSpace(Editor.Text);
 
-        RewriteButton.IsEnabled = configured && hasSelection;
+        RewriteButton.IsEnabled = configured && hasSelection && !isRemote;
         RewriteButton.ToolTip = configured
-            ? (hasSelection ? "Rewrite the selected text with AI" : "Select text to rewrite")
+            ? (isRemote ? "Read-only session — duplicate to edit"
+                : hasSelection ? "Rewrite the selected text with AI" : "Select text to rewrite")
             : "Configure Azure OpenAI first (AI…)";
 
-        RewriteMenuItem.IsEnabled = configured && hasSelection;
-        GenerateTitleMenuItem.IsEnabled = configured && hasContent;
+        RewriteMenuItem.IsEnabled = configured && hasSelection && !isRemote;
+        GenerateTitleMenuItem.IsEnabled = configured && hasContent && !isRemote;
+    }
+
+    private void UpdateSyncStatus(string? message = null)
+    {
+        if (SyncStatusText is null)
+        {
+            return;
+        }
+
+        var configured = _syncService.IsConfigured(_settings);
+        SyncButton.IsEnabled = configured && !_isSyncing;
+
+        if (message is not null)
+        {
+            SyncStatusText.Text = message;
+            return;
+        }
+
+        if (_isSyncing)
+        {
+            SyncStatusText.Text = "Syncing…";
+        }
+        else if (!configured)
+        {
+            SyncStatusText.Text = "Sync not configured";
+        }
+        else
+        {
+            SyncStatusText.Text = $"Sync ready ({_settings.DeviceName})";
+        }
+    }
+
+    private void SyncSettingsButton_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new SyncSettingsWindow(_settings, _syncService) { Owner = this };
+        if (dialog.ShowDialog() == true)
+        {
+            _ = PersistSettingsAsync();
+            UpdateSyncStatus();
+        }
+    }
+
+    private async void SyncButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_syncService.IsConfigured(_settings))
+        {
+            SyncSettingsButton_Click(this, new RoutedEventArgs());
+            return;
+        }
+
+        if (_isSyncing)
+        {
+            return;
+        }
+
+        _isSyncing = true;
+        UpdateSyncStatus();
+
+        try
+        {
+            await _selectionSemaphore.WaitAsync();
+            try
+            {
+                await SaveCurrentSessionAsync(refreshSessions: false);
+                await SaveIndexIfNeededAsync();
+
+                var currentSessions = _sessions.Select(item => item.Session).ToList();
+                using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(5));
+                var result = await _syncService.SyncAsync(_settings, currentSessions, _sessionStorage, cts.Token);
+
+                var selectedId = _currentSession?.Id;
+                ReplaceSessionItems(result.Sessions);
+                await SaveIndexAsync();
+                await _settingsService.SaveAsync(_settings);
+
+                _isUpdatingSessions = true;
+                try
+                {
+                    SessionsList.SelectedItem = _sessions.FirstOrDefault(item => item.Id == selectedId)
+                        ?? _sessions.FirstOrDefault();
+                }
+                finally
+                {
+                    _isUpdatingSessions = false;
+                }
+
+                UpdateSyncStatus($"{result.Summary}");
+            }
+            finally
+            {
+                _selectionSemaphore.Release();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            UpdateSyncStatus("Sync timed out.");
+        }
+        catch (Exception exception)
+        {
+            UpdateSyncStatus("Sync failed.");
+            ShowError("Simple Notepad could not sync your sessions.", exception);
+        }
+        finally
+        {
+            _isSyncing = false;
+            UpdateSyncStatus(SyncStatusText.Text);
+            SyncButton.IsEnabled = _syncService.IsConfigured(_settings);
+        }
+    }
+
+    private async void DuplicateToEdit_Click(object sender, RoutedEventArgs e)
+    {
+        var source = _contextMenuTarget;
+        if (source is null || !source.Session.IsRemote)
+        {
+            return;
+        }
+
+        try
+        {
+            string newId;
+            await _selectionSemaphore.WaitAsync();
+            try
+            {
+                await SaveCurrentSessionAsync(refreshSessions: false);
+
+                var content = await _sessionStorage.LoadContentAsync(source.Session);
+                var copy = CreateOwnedSession(source.Session.Title);
+                copy.Preview = CreatePreview(content);
+                await _sessionStorage.SaveContentAsync(copy, content);
+                newId = copy.Id;
+
+                ReplaceSessionItems(_sessions.Select(item => item.Session).Append(copy));
+                await SaveIndexAsync();
+            }
+            finally
+            {
+                _selectionSemaphore.Release();
+            }
+
+            SessionsList.SelectedItem = _sessions.FirstOrDefault(item => item.Id == newId);
+        }
+        catch (Exception exception)
+        {
+            ShowError("Simple Notepad could not duplicate the session.", exception);
+        }
     }
 
     private void AiSettingsButton_Click(object sender, RoutedEventArgs e)
@@ -1861,6 +2024,16 @@ public partial class MainWindow : Window
                 }
 
                 var isDeletingCurrent = _currentSession?.Id == currentItem.Id;
+
+                if (!currentItem.Session.IsRemote && _syncService.IsConfigured(_settings))
+                {
+                    if (!_settings.PendingSyncDeletions.Contains(currentItem.Id))
+                    {
+                        _settings.PendingSyncDeletions.Add(currentItem.Id);
+                        await _settingsService.SaveAsync(_settings);
+                    }
+                }
+
                 await _sessionStorage.DeleteSessionAsync(currentItem.Session);
 
                 if (isDeletingCurrent)
@@ -2004,7 +2177,13 @@ public partial class MainWindow : Window
         if (_contextMenuTarget is null)
         {
             e.Handled = true;
+            return;
         }
+
+        var isRemote = _contextMenuTarget.Session.IsRemote;
+        DuplicateToEditMenuItem.Visibility = isRemote ? Visibility.Visible : Visibility.Collapsed;
+        RenameSessionMenuItem.IsEnabled = !isRemote;
+        PinSessionMenuItem.IsEnabled = !isRemote;
     }
 
     private void UpdateStatus()

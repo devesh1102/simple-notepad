@@ -32,4 +32,16 @@ public sealed class AppSettings
     public string? AiApiKeyProtected { get; set; }
 
     public double AiTemperature { get; set; } = 0.7;
+
+    public string? SyncConnectionStringProtected { get; set; }
+
+    public string SyncContainerName { get; set; } = "simplenotepad";
+
+    public string? DeviceId { get; set; }
+
+    public string? DeviceName { get; set; }
+
+    public string? DeviceColor { get; set; }
+
+    public List<string> PendingSyncDeletions { get; set; } = [];
 }
