@@ -54,6 +54,16 @@ public partial class MainWindow : Window
         catch (Exception exception)
         {
             ShowError("Simple Notepad could not load sessions.", exception);
+            try
+            {
+                await CreateNewSessionAsync();
+            }
+            catch (Exception fallbackException)
+            {
+                Editor.IsReadOnly = true;
+                SessionTitleBox.IsReadOnly = true;
+                ShowError("Simple Notepad could not create a recovery session.", fallbackException);
+            }
         }
     }
 
@@ -88,6 +98,7 @@ public partial class MainWindow : Window
                 _selectionSemaphore.Release();
             }
 
+            Interlocked.Increment(ref _selectionRequestId);
             _isClosingAfterSave = true;
             Close();
         }
@@ -155,7 +166,20 @@ public partial class MainWindow : Window
     {
         try
         {
-            await CreateNewSessionAsync();
+            if (_isClosingSaveInProgress)
+            {
+                return;
+            }
+
+            await _selectionSemaphore.WaitAsync();
+            try
+            {
+                await CreateNewSessionAsync();
+            }
+            finally
+            {
+                _selectionSemaphore.Release();
+            }
         }
         catch (Exception exception)
         {
@@ -241,7 +265,14 @@ public partial class MainWindow : Window
             _editVersion = 0;
             SaveStateText.Text = "Saved";
             UpdateStatus();
-            await _settingsService.SaveAsync(_settings);
+            try
+            {
+                await _settingsService.SaveAsync(_settings);
+            }
+            catch (Exception exception)
+            {
+                ShowError("Session opened, but Simple Notepad could not remember it as the last opened session.", exception);
+            }
 
             if (_pendingRenameSessionId == session.Id)
             {
@@ -385,6 +416,11 @@ public partial class MainWindow : Window
     {
         try
         {
+            if (_isClosingSaveInProgress)
+            {
+                return;
+            }
+
             var item = _contextMenuTarget;
             if (item is null)
             {
@@ -403,52 +439,60 @@ public partial class MainWindow : Window
                 return;
             }
 
-            if (isDeletingCurrent)
+            await _selectionSemaphore.WaitAsync();
+            try
             {
-                _currentSession = null;
-                _hasUnsavedContent = false;
-                _hasUnsavedIndex = false;
-                _isLoadingSession = true;
+                await _sessionStorage.DeleteSessionAsync(item.Session);
+
+                if (isDeletingCurrent)
+                {
+                    _currentSession = null;
+                    _hasUnsavedContent = false;
+                    _hasUnsavedIndex = false;
+                    _isLoadingSession = true;
+                    try
+                    {
+                        SessionTitleBox.Text = string.Empty;
+                        Editor.Text = string.Empty;
+                    }
+                    finally
+                    {
+                        _isLoadingSession = false;
+                    }
+                }
+
+                _isUpdatingSessions = true;
                 try
                 {
-                    SessionTitleBox.Text = string.Empty;
-                    Editor.Text = string.Empty;
+                    _sessions.Remove(item);
                 }
                 finally
                 {
-                    _isLoadingSession = false;
+                    _isUpdatingSessions = false;
                 }
-            }
 
-            await _sessionStorage.DeleteSessionAsync(item.Session);
+                _hasUnsavedIndex = true;
 
-            _isUpdatingSessions = true;
-            try
-            {
-                _sessions.Remove(item);
+                await SaveIndexIfNeededAsync();
+
+                if (_sessions.Count == 0)
+                {
+                    await CreateNewSessionAsync();
+                    return;
+                }
+
+                if (isDeletingCurrent)
+                {
+                    SessionsList.SelectedIndex = 0;
+                }
+                else
+                {
+                    UpdateSessionItems();
+                }
             }
             finally
             {
-                _isUpdatingSessions = false;
-            }
-
-            _hasUnsavedIndex = true;
-
-            await SaveIndexIfNeededAsync();
-
-            if (_sessions.Count == 0)
-            {
-                await CreateNewSessionAsync();
-                return;
-            }
-
-            if (isDeletingCurrent)
-            {
-                SessionsList.SelectedIndex = 0;
-            }
-            else
-            {
-                UpdateSessionItems();
+                _selectionSemaphore.Release();
             }
         }
         catch (Exception exception)
@@ -461,16 +505,29 @@ public partial class MainWindow : Window
     {
         try
         {
+            if (_isClosingSaveInProgress)
+            {
+                return;
+            }
+
             var item = _contextMenuTarget;
             if (item is null)
             {
                 return;
             }
 
-            item.Session.IsPinned = !item.Session.IsPinned;
-            _hasUnsavedIndex = true;
-            await SaveIndexIfNeededAsync();
-            UpdateSessionItems();
+            await _selectionSemaphore.WaitAsync();
+            try
+            {
+                item.Session.IsPinned = !item.Session.IsPinned;
+                _hasUnsavedIndex = true;
+                await SaveIndexIfNeededAsync();
+                UpdateSessionItems();
+            }
+            finally
+            {
+                _selectionSemaphore.Release();
+            }
         }
         catch (Exception exception)
         {
