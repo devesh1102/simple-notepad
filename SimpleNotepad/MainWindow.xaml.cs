@@ -95,10 +95,10 @@ public partial class MainWindow : Window
             }
             finally
             {
+                Interlocked.Increment(ref _selectionRequestId);
                 _selectionSemaphore.Release();
             }
 
-            Interlocked.Increment(ref _selectionRequestId);
             _isClosingAfterSave = true;
             Close();
         }
@@ -427,7 +427,6 @@ public partial class MainWindow : Window
                 return;
             }
 
-            var isDeletingCurrent = _currentSession?.Id == item.Id;
             var result = MessageBox.Show(
                 $"Delete \"{item.Title}\"?",
                 "Delete session",
@@ -442,7 +441,14 @@ public partial class MainWindow : Window
             await _selectionSemaphore.WaitAsync();
             try
             {
-                await _sessionStorage.DeleteSessionAsync(item.Session);
+                var currentItem = _sessions.FirstOrDefault(sessionItem => sessionItem.Id == item.Id);
+                if (currentItem is null)
+                {
+                    return;
+                }
+
+                var isDeletingCurrent = _currentSession?.Id == currentItem.Id;
+                await _sessionStorage.DeleteSessionAsync(currentItem.Session);
 
                 if (isDeletingCurrent)
                 {
@@ -464,7 +470,7 @@ public partial class MainWindow : Window
                 _isUpdatingSessions = true;
                 try
                 {
-                    _sessions.Remove(item);
+                    _sessions.Remove(currentItem);
                 }
                 finally
                 {
@@ -519,9 +525,27 @@ public partial class MainWindow : Window
             await _selectionSemaphore.WaitAsync();
             try
             {
-                item.Session.IsPinned = !item.Session.IsPinned;
+                var currentItem = _sessions.FirstOrDefault(sessionItem => sessionItem.Id == item.Id);
+                if (currentItem is null)
+                {
+                    return;
+                }
+
+                var originalPinned = currentItem.Session.IsPinned;
+                currentItem.Session.IsPinned = !originalPinned;
                 _hasUnsavedIndex = true;
-                await SaveIndexIfNeededAsync();
+
+                try
+                {
+                    await SaveIndexIfNeededAsync();
+                }
+                catch
+                {
+                    currentItem.Session.IsPinned = originalPinned;
+                    _hasUnsavedIndex = false;
+                    throw;
+                }
+
                 UpdateSessionItems();
             }
             finally
