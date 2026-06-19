@@ -19,7 +19,9 @@ public partial class MainWindow : Window
 
     private AppSettings _settings = new();
     private NoteSession? _currentSession;
+    private SessionListItem? _contextMenuTarget;
     private bool _isLoadingSession;
+    private bool _isUpdatingSessions;
     private bool _isClosingAfterSave;
     private bool _hasUnsavedContent;
     private bool _hasUnsavedIndex;
@@ -137,7 +139,7 @@ public partial class MainWindow : Window
 
     private async void SessionsList_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
     {
-        if (_isLoadingSession || SessionsList.SelectedItem is not SessionListItem item)
+        if (_isLoadingSession || _isUpdatingSessions || SessionsList.SelectedItem is not SessionListItem item)
         {
             return;
         }
@@ -177,6 +179,8 @@ public partial class MainWindow : Window
         var preview = CreatePreview(content);
         var title = string.IsNullOrWhiteSpace(SessionTitleBox.Text) ? "Untitled" : SessionTitleBox.Text.Trim();
 
+        var shouldRefreshSessions = false;
+
         if (_hasUnsavedContent || _currentSession.Title != title || _currentSession.Preview != preview)
         {
             _currentSession.Title = title;
@@ -187,11 +191,16 @@ public partial class MainWindow : Window
             await _sessionStorage.SaveContentAsync(_currentSession, content);
             _hasUnsavedContent = false;
             _hasUnsavedIndex = true;
+            shouldRefreshSessions = true;
         }
 
         await SaveIndexIfNeededAsync();
         SaveStateText.Text = "Saved";
-        UpdateSessionItems();
+
+        if (shouldRefreshSessions)
+        {
+            UpdateSessionItems();
+        }
     }
 
     private async Task SaveIndexIfNeededAsync()
@@ -211,8 +220,17 @@ public partial class MainWindow : Window
     private void UpdateSessionItems()
     {
         var selectedId = _currentSession?.Id;
-        ReplaceSessionItems(_sessions.Select(item => item.Session));
-        SessionsList.SelectedItem = _sessions.FirstOrDefault(item => item.Id == selectedId);
+
+        _isUpdatingSessions = true;
+        try
+        {
+            ReplaceSessionItems(_sessions.Select(item => item.Session));
+            SessionsList.SelectedItem = _sessions.FirstOrDefault(item => item.Id == selectedId);
+        }
+        finally
+        {
+            _isUpdatingSessions = false;
+        }
     }
 
     private void Editor_TextChanged(object? sender, EventArgs e)
@@ -245,17 +263,24 @@ public partial class MainWindow : Window
 
     private void RenameSession_Click(object sender, RoutedEventArgs e)
     {
+        if (_contextMenuTarget is not null)
+        {
+            SessionsList.SelectedItem = _contextMenuTarget;
+        }
+
         SessionTitleBox.Focus();
         SessionTitleBox.SelectAll();
     }
 
     private async void DeleteSession_Click(object sender, RoutedEventArgs e)
     {
-        if (SessionsList.SelectedItem is not SessionListItem item)
+        var item = _contextMenuTarget;
+        if (item is null)
         {
             return;
         }
 
+        var isDeletingCurrent = _currentSession?.Id == item.Id;
         var result = MessageBox.Show(
             $"Delete \"{item.Title}\"?",
             "Delete session",
@@ -267,14 +292,11 @@ public partial class MainWindow : Window
             return;
         }
 
-        await _sessionStorage.DeleteSessionAsync(item.Session);
-        _sessions.Remove(item);
-        _hasUnsavedIndex = true;
-
-        if (_currentSession?.Id == item.Id)
+        if (isDeletingCurrent)
         {
             _currentSession = null;
             _hasUnsavedContent = false;
+            _hasUnsavedIndex = false;
             _isLoadingSession = true;
             try
             {
@@ -287,6 +309,20 @@ public partial class MainWindow : Window
             }
         }
 
+        await _sessionStorage.DeleteSessionAsync(item.Session);
+
+        _isUpdatingSessions = true;
+        try
+        {
+            _sessions.Remove(item);
+        }
+        finally
+        {
+            _isUpdatingSessions = false;
+        }
+
+        _hasUnsavedIndex = true;
+
         await SaveIndexIfNeededAsync();
 
         if (_sessions.Count == 0)
@@ -295,12 +331,20 @@ public partial class MainWindow : Window
             return;
         }
 
-        SessionsList.SelectedIndex = 0;
+        if (isDeletingCurrent)
+        {
+            SessionsList.SelectedIndex = 0;
+        }
+        else
+        {
+            UpdateSessionItems();
+        }
     }
 
     private async void PinSession_Click(object sender, RoutedEventArgs e)
     {
-        if (SessionsList.SelectedItem is not SessionListItem item)
+        var item = _contextMenuTarget;
+        if (item is null)
         {
             return;
         }
@@ -314,10 +358,14 @@ public partial class MainWindow : Window
     private void SessionsList_PreviewMouseRightButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
     {
         var item = FindAncestor<ListBoxItem>((DependencyObject)e.OriginalSource);
-        if (item is not null)
+        _contextMenuTarget = item?.DataContext as SessionListItem;
+    }
+
+    private void SessionsList_ContextMenuOpening(object sender, ContextMenuEventArgs e)
+    {
+        if (_contextMenuTarget is null)
         {
-            item.IsSelected = true;
-            item.Focus();
+            e.Handled = true;
         }
     }
 

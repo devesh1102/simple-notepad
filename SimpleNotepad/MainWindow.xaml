@@ -55,6 +55,7 @@
                          BorderThickness="0"
                          Background="Transparent"
                          PreviewMouseRightButtonDown="SessionsList_PreviewMouseRightButtonDown"
+                         ContextMenuOpening="SessionsList_ContextMenuOpening"
                          SelectionChanged="SessionsList_SelectionChanged">
                     <ListBox.ContextMenu>
                         <ContextMenu>
