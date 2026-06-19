@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.ComponentModel;
 using System.Windows.Data;
+using System.Windows.Input;
 using System.Windows.Media;
 using SimpleNotepad.Models;
 using SimpleNotepad.Services;
@@ -31,6 +32,8 @@ public partial class MainWindow : Window
     private int _editVersion;
     private int _selectionRequestId;
     private readonly SemaphoreSlim _selectionSemaphore = new(1, 1);
+    private CancellationTokenSource? _autosaveCts;
+    private static readonly TimeSpan AutosaveDelay = TimeSpan.FromMilliseconds(1500);
 
     public MainWindow()
     {
@@ -41,6 +44,7 @@ public partial class MainWindow : Window
 
         Loaded += MainWindow_Loaded;
         Closing += MainWindow_Closing;
+        PreviewKeyDown += MainWindow_PreviewKeyDown;
         Editor.TextArea.Caret.PositionChanged += (_, _) => UpdateStatus();
     }
 
@@ -81,6 +85,7 @@ public partial class MainWindow : Window
         }
 
         _isClosingSaveInProgress = true;
+        CancelPendingAutosave();
         Editor.IsReadOnly = true;
         SessionTitleBox.IsReadOnly = true;
 
@@ -113,7 +118,10 @@ public partial class MainWindow : Window
 
     private async Task LoadSessionsAsync()
     {
-        var sessions = (await _sessionStorage.LoadIndexAsync())
+        var loaded = await _sessionStorage.LoadIndexAsync();
+        var active = await _sessionStorage.PurgeExpiredSessionsAsync(loaded);
+
+        var sessions = active
             .OrderByDescending(session => session.IsPinned)
             .ThenByDescending(session => session.UpdatedAt)
             .ToList();
@@ -217,6 +225,7 @@ public partial class MainWindow : Window
             return;
         }
 
+        CancelPendingAutosave();
         var requestId = Interlocked.Increment(ref _selectionRequestId);
         await _selectionSemaphore.WaitAsync();
         try
@@ -381,6 +390,7 @@ public partial class MainWindow : Window
         _hasUnsavedContent = true;
         _editVersion++;
         SaveStateText.Text = "Unsaved";
+        ScheduleAutosave();
         UpdateStatus();
     }
 
@@ -393,6 +403,108 @@ public partial class MainWindow : Window
 
         _hasUnsavedIndex = true;
         SaveStateText.Text = "Unsaved";
+        ScheduleAutosave();
+        UpdateStatus();
+    }
+
+    private void ScheduleAutosave()
+    {
+        CancelPendingAutosave();
+
+        if (_isLoadingSession || _isClosingSaveInProgress || _currentSession is null)
+        {
+            return;
+        }
+
+        var cts = new CancellationTokenSource();
+        _autosaveCts = cts;
+        var requestId = _selectionRequestId;
+        var sessionId = _currentSession.Id;
+        _ = RunAutosaveAsync(requestId, sessionId, cts.Token);
+    }
+
+    private async Task RunAutosaveAsync(int requestId, string sessionId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(AutosaveDelay, cancellationToken);
+            if (_isClosingSaveInProgress ||
+                _isLoadingSession ||
+                _currentSession?.Id != sessionId ||
+                requestId != _selectionRequestId ||
+                (!_hasUnsavedContent && !_hasUnsavedIndex))
+            {
+                return;
+            }
+
+            await SaveCurrentSessionWithLockAsync(refreshSessions: true, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception exception)
+        {
+            ShowError("Simple Notepad could not autosave the current session.", exception);
+        }
+    }
+
+    private async Task SaveCurrentSessionWithLockAsync(bool refreshSessions, CancellationToken cancellationToken = default)
+    {
+        if (_currentSession is null || _isClosingSaveInProgress)
+        {
+            return;
+        }
+
+        await _selectionSemaphore.WaitAsync(cancellationToken);
+        try
+        {
+            if (_currentSession is null || _isClosingSaveInProgress || _isLoadingSession)
+            {
+                return;
+            }
+
+            await SaveCurrentSessionAsync(refreshSessions);
+            UpdateStatus();
+        }
+        finally
+        {
+            _selectionSemaphore.Release();
+        }
+    }
+
+    private void CancelPendingAutosave()
+    {
+        var autosaveCts = Interlocked.Exchange(ref _autosaveCts, null);
+        if (autosaveCts is null)
+        {
+            return;
+        }
+
+        autosaveCts.Cancel();
+        autosaveCts.Dispose();
+    }
+
+    private async void MainWindow_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.S || (Keyboard.Modifiers & ModifierKeys.Control) == 0)
+        {
+            return;
+        }
+
+        e.Handled = true;
+        CancelPendingAutosave();
+
+        try
+        {
+            await SaveCurrentSessionWithLockAsync(refreshSessions: true);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception exception)
+        {
+            ShowError("Simple Notepad could not save your latest changes.", exception);
+        }
     }
 
     private void SessionSearchBox_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
@@ -547,8 +659,14 @@ public partial class MainWindow : Window
                 }
 
                 var originalPinned = currentItem.Session.IsPinned;
+                var originalExpiresAt = currentItem.Session.ExpiresAt;
                 var originalUnsavedIndex = _hasUnsavedIndex;
                 currentItem.Session.IsPinned = !originalPinned;
+                if (originalPinned)
+                {
+                    currentItem.Session.ExpiresAt = DateTimeOffset.UtcNow.AddDays(7);
+                }
+
                 _hasUnsavedIndex = true;
 
                 try
@@ -558,6 +676,7 @@ public partial class MainWindow : Window
                 catch
                 {
                     currentItem.Session.IsPinned = originalPinned;
+                    currentItem.Session.ExpiresAt = originalExpiresAt;
                     _hasUnsavedIndex = originalUnsavedIndex;
                     throw;
                 }

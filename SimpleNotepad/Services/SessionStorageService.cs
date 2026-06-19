@@ -115,6 +115,63 @@ public sealed class SessionStorageService
         return AtomicWriteTextAsync(GetSessionContentPath(session), content, cancellationToken);
     }
 
+    public async Task<IReadOnlyList<NoteSession>> PurgeExpiredSessionsAsync(
+        IReadOnlyList<NoteSession> sessions,
+        CancellationToken cancellationToken = default)
+    {
+        var normalizedSessions = sessions.ToList();
+        var now = DateTimeOffset.UtcNow;
+        var changed = false;
+
+        foreach (var session in normalizedSessions.Where(session => session.ExpiresAt == default))
+        {
+            session.ExpiresAt = now.AddDays(7);
+            changed = true;
+        }
+
+        var expired = normalizedSessions.Where(s => !s.IsPinned && s.ExpiresAt <= now).ToList();
+        var remaining = normalizedSessions.Where(s => s.IsPinned || s.ExpiresAt > now).ToList();
+
+        if (expired.Count == 0)
+        {
+            if (changed)
+            {
+                try
+                {
+                    await SaveIndexAsync(normalizedSessions, cancellationToken);
+                }
+                catch (IOException)
+                {
+                }
+                catch (UnauthorizedAccessException)
+                {
+                }
+            }
+
+            return normalizedSessions;
+        }
+
+        try
+        {
+            await SaveIndexAsync(remaining, cancellationToken);
+        }
+        catch (IOException)
+        {
+            return normalizedSessions;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return normalizedSessions;
+        }
+
+        foreach (var session in expired)
+        {
+            await DeleteSessionAsync(session, cancellationToken);
+        }
+
+        return remaining;
+    }
+
     public Task DeleteSessionAsync(NoteSession session, CancellationToken cancellationToken = default)
     {
         EnsureStorageFolders();
