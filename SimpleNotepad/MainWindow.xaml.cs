@@ -20,11 +20,16 @@ public partial class MainWindow : Window
     private AppSettings _settings = new();
     private NoteSession? _currentSession;
     private SessionListItem? _contextMenuTarget;
+    private string? _pendingRenameSessionId;
     private bool _isLoadingSession;
     private bool _isUpdatingSessions;
     private bool _isClosingAfterSave;
+    private bool _hasFreshContextMenuTarget;
     private bool _hasUnsavedContent;
     private bool _hasUnsavedIndex;
+    private int _editVersion;
+    private int _selectionRequestId;
+    private readonly SemaphoreSlim _selectionSemaphore = new(1, 1);
 
     public MainWindow()
     {
@@ -52,6 +57,7 @@ public partial class MainWindow : Window
         }
 
         e.Cancel = true;
+        Editor.IsReadOnly = true;
 
         try
         {
@@ -63,6 +69,7 @@ public partial class MainWindow : Window
         }
         catch (Exception exception)
         {
+            Editor.IsReadOnly = false;
             MessageBox.Show(
                 $"Simple Notepad could not save your latest changes:\n\n{exception.Message}",
                 "Save failed",
@@ -132,9 +139,9 @@ public partial class MainWindow : Window
         var session = _sessionStorage.CreateSession();
         await _sessionStorage.SaveContentAsync(session, string.Empty);
 
-        _sessions.Insert(0, new SessionListItem(session));
+        ReplaceSessionItems(_sessions.Select(item => item.Session).Append(session));
         await SaveIndexAsync();
-        SessionsList.SelectedIndex = 0;
+        SessionsList.SelectedItem = _sessions.FirstOrDefault(item => item.Id == session.Id);
     }
 
     private async void SessionsList_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
@@ -144,8 +151,28 @@ public partial class MainWindow : Window
             return;
         }
 
-        await SaveCurrentSessionAsync();
-        await OpenSessionAsync(item.Session);
+        var requestId = Interlocked.Increment(ref _selectionRequestId);
+        await _selectionSemaphore.WaitAsync();
+        try
+        {
+            if (requestId != _selectionRequestId)
+            {
+                return;
+            }
+
+            await SaveCurrentSessionAsync();
+
+            if (requestId != _selectionRequestId)
+            {
+                return;
+            }
+
+            await OpenSessionAsync(item.Session);
+        }
+        finally
+        {
+            _selectionSemaphore.Release();
+        }
     }
 
     private async Task OpenSessionAsync(NoteSession session)
@@ -158,9 +185,17 @@ public partial class MainWindow : Window
             Editor.Text = await _sessionStorage.LoadContentAsync(session);
             _settings.LastSessionId = session.Id;
             _hasUnsavedContent = false;
+            _editVersion = 0;
             SaveStateText.Text = "Saved";
             UpdateStatus();
             await _settingsService.SaveAsync(_settings);
+
+            if (_pendingRenameSessionId == session.Id)
+            {
+                _pendingRenameSessionId = null;
+                SessionTitleBox.Focus();
+                SessionTitleBox.SelectAll();
+            }
         }
         finally
         {
@@ -176,6 +211,7 @@ public partial class MainWindow : Window
         }
 
         var content = Editor.Text;
+        var versionToSave = _editVersion;
         var preview = CreatePreview(content);
         var title = string.IsNullOrWhiteSpace(SessionTitleBox.Text) ? "Untitled" : SessionTitleBox.Text.Trim();
 
@@ -189,13 +225,13 @@ public partial class MainWindow : Window
             _currentSession.ExpiresAt = _currentSession.UpdatedAt.AddDays(7);
 
             await _sessionStorage.SaveContentAsync(_currentSession, content);
-            _hasUnsavedContent = false;
+            _hasUnsavedContent = _editVersion != versionToSave;
             _hasUnsavedIndex = true;
             shouldRefreshSessions = true;
         }
 
         await SaveIndexIfNeededAsync();
-        SaveStateText.Text = "Saved";
+        SaveStateText.Text = _hasUnsavedContent || _hasUnsavedIndex ? "Unsaved" : "Saved";
 
         if (shouldRefreshSessions)
         {
@@ -241,6 +277,7 @@ public partial class MainWindow : Window
         }
 
         _hasUnsavedContent = true;
+        _editVersion++;
         SaveStateText.Text = "Unsaved";
         UpdateStatus();
     }
@@ -265,9 +302,15 @@ public partial class MainWindow : Window
     {
         if (_contextMenuTarget is not null)
         {
+            _pendingRenameSessionId = _contextMenuTarget.Id;
             SessionsList.SelectedItem = _contextMenuTarget;
+            if (_currentSession?.Id != _contextMenuTarget.Id)
+            {
+                return;
+            }
         }
 
+        _pendingRenameSessionId = null;
         SessionTitleBox.Focus();
         SessionTitleBox.SelectAll();
     }
@@ -359,10 +402,18 @@ public partial class MainWindow : Window
     {
         var item = FindAncestor<ListBoxItem>((DependencyObject)e.OriginalSource);
         _contextMenuTarget = item?.DataContext as SessionListItem;
+        _hasFreshContextMenuTarget = true;
     }
 
     private void SessionsList_ContextMenuOpening(object sender, ContextMenuEventArgs e)
     {
+        if (!_hasFreshContextMenuTarget)
+        {
+            _contextMenuTarget = SessionsList.SelectedItem as SessionListItem;
+        }
+
+        _hasFreshContextMenuTarget = false;
+
         if (_contextMenuTarget is null)
         {
             e.Handled = true;
