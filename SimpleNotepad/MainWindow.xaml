@@ -228,6 +228,20 @@
                     BorderBrush="#3C3C3C"
                     BorderThickness="0,0,0,1">
                 <DockPanel LastChildFill="True">
+                    <StackPanel DockPanel.Dock="Right"
+                               Orientation="Horizontal"
+                               VerticalAlignment="Center">
+                        <Button x:Name="WordWrapButton"
+                               Margin="0,0,12,0"
+                               Padding="8,3"
+                               Content="Wrap: On"
+                               ToolTip="Toggle word wrap"
+                               Click="WordWrapButton_Click" />
+                        <TextBlock x:Name="SaveStateText"
+                                  Text="Saved"
+                                  Foreground="#4EC9B0"
+                                  VerticalAlignment="Center" />
+                    </StackPanel>
                     <TextBox x:Name="SessionTitleBox"
                              Text="Untitled"
                                FontSize="18"
@@ -237,15 +251,11 @@
                              Background="Transparent"
                              VerticalAlignment="Center"
                              TextChanged="SessionTitleBox_TextChanged" />
-                    <TextBlock x:Name="SaveStateText"
-                               DockPanel.Dock="Right"
-                               Text="Saved"
-                               Foreground="#4EC9B0"
-                               VerticalAlignment="Center" />
                 </DockPanel>
             </Border>
 
-            <Border Grid.Row="1"
+            <Border x:Name="FindReplaceBar"
+                    Grid.Row="1"
                     Padding="10"
                     Background="#2D2D30"
                     BorderBrush="#3C3C3C"

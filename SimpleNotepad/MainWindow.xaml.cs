@@ -1,10 +1,13 @@
 ﻿using System.Collections.ObjectModel;
+using System.IO;
+using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using System.ComponentModel;
 using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
+using Microsoft.Win32;
 using SimpleNotepad.Models;
 using SimpleNotepad.Services;
 using SimpleNotepad.ViewModels;
@@ -29,11 +32,16 @@ public partial class MainWindow : Window
     private bool _hasFreshContextMenuTarget;
     private bool _hasUnsavedContent;
     private bool _hasUnsavedIndex;
+    private string _saveState = "Saved";
     private int _editVersion;
     private int _selectionRequestId;
     private readonly SemaphoreSlim _selectionSemaphore = new(1, 1);
     private CancellationTokenSource? _autosaveCts;
     private static readonly TimeSpan AutosaveDelay = TimeSpan.FromMilliseconds(1500);
+    private const double MinimumEditorFontSize = 8;
+    private const double MaximumEditorFontSize = 48;
+    private const double EditorFontSizeStep = 1;
+    private static readonly UTF8Encoding StrictUtf8 = new(false, true);
 
     public MainWindow()
     {
@@ -47,6 +55,7 @@ public partial class MainWindow : Window
         Loaded += MainWindow_Loaded;
         Closing += MainWindow_Closing;
         PreviewKeyDown += MainWindow_PreviewKeyDown;
+        Editor.PreviewMouseWheel += Editor_PreviewMouseWheel;
         Editor.TextArea.Caret.PositionChanged += (_, _) => UpdateStatus();
     }
 
@@ -187,6 +196,11 @@ public partial class MainWindow : Window
 
     private async void NewSessionButton_Click(object sender, RoutedEventArgs e)
     {
+        await CreateNewSessionWithLockAsync();
+    }
+
+    private async Task CreateNewSessionWithLockAsync()
+    {
         try
         {
             if (_isClosingSaveInProgress)
@@ -292,7 +306,7 @@ public partial class MainWindow : Window
             _settings.LastSessionId = session.Id;
             _hasUnsavedContent = false;
             _editVersion = 0;
-            SaveStateText.Text = "Saved";
+            SetSaveState("Saved", Color.FromRgb(0x4E, 0xC9, 0xB0));
             UpdateStatus();
             try
             {
@@ -323,32 +337,44 @@ public partial class MainWindow : Window
             return;
         }
 
-        var content = Editor.Text;
-        var versionToSave = _editVersion;
-        var preview = CreatePreview(content);
-        var title = string.IsNullOrWhiteSpace(SessionTitleBox.Text) ? "Untitled" : SessionTitleBox.Text.Trim();
+        SetSaveState("Saving...", Color.FromRgb(0xD7, 0xBA, 0x7D));
 
-        var shouldRefreshSessions = false;
-
-        if (_hasUnsavedContent || _currentSession.Title != title || _currentSession.Preview != preview)
+        try
         {
-            _currentSession.Title = title;
-            _currentSession.Preview = preview;
-            _currentSession.UpdatedAt = DateTimeOffset.UtcNow;
-            _currentSession.ExpiresAt = _currentSession.UpdatedAt.AddDays(7);
+            var content = Editor.Text;
+            var versionToSave = _editVersion;
+            var preview = CreatePreview(content);
+            var title = string.IsNullOrWhiteSpace(SessionTitleBox.Text) ? "Untitled" : SessionTitleBox.Text.Trim();
 
-            await _sessionStorage.SaveContentAsync(_currentSession, content);
-            _hasUnsavedContent = _editVersion != versionToSave;
-            _hasUnsavedIndex = true;
-            shouldRefreshSessions = true;
+            var shouldRefreshSessions = false;
+
+            if (_hasUnsavedContent || _currentSession.Title != title || _currentSession.Preview != preview)
+            {
+                _currentSession.Title = title;
+                _currentSession.Preview = preview;
+                _currentSession.UpdatedAt = DateTimeOffset.UtcNow;
+                _currentSession.ExpiresAt = _currentSession.UpdatedAt.AddDays(7);
+
+                await _sessionStorage.SaveContentAsync(_currentSession, content);
+                _hasUnsavedContent = _editVersion != versionToSave;
+                _hasUnsavedIndex = true;
+                shouldRefreshSessions = true;
+            }
+
+            await SaveIndexIfNeededAsync();
+            SetSaveState(
+                _hasUnsavedContent || _hasUnsavedIndex ? "Unsaved" : "Saved",
+                _hasUnsavedContent || _hasUnsavedIndex ? Color.FromRgb(0xD7, 0xBA, 0x7D) : Color.FromRgb(0x4E, 0xC9, 0xB0));
+
+            if (shouldRefreshSessions && refreshSessions)
+            {
+                UpdateSessionItems();
+            }
         }
-
-        await SaveIndexIfNeededAsync();
-        SaveStateText.Text = _hasUnsavedContent || _hasUnsavedIndex ? "Unsaved" : "Saved";
-
-        if (shouldRefreshSessions && refreshSessions)
+        catch
         {
-            UpdateSessionItems();
+            MarkSaveError();
+            throw;
         }
     }
 
@@ -404,7 +430,7 @@ public partial class MainWindow : Window
 
         _hasUnsavedContent = true;
         _editVersion++;
-        SaveStateText.Text = "Unsaved";
+        SetSaveState("Unsaved", Color.FromRgb(0xD7, 0xBA, 0x7D));
         ScheduleAutosave();
         UpdateStatus();
     }
@@ -417,7 +443,7 @@ public partial class MainWindow : Window
         }
 
         _hasUnsavedIndex = true;
-        SaveStateText.Text = "Unsaved";
+        SetSaveState("Unsaved", Color.FromRgb(0xD7, 0xBA, 0x7D));
         ScheduleAutosave();
         UpdateStatus();
     }
@@ -501,12 +527,64 @@ public partial class MainWindow : Window
 
     private async void MainWindow_PreviewKeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Key != Key.S || (Keyboard.Modifiers & ModifierKeys.Control) == 0)
+        var hasControl = (Keyboard.Modifiers & ModifierKeys.Control) != 0;
+        var hasShift = (Keyboard.Modifiers & ModifierKeys.Shift) != 0;
+
+        if (e.Key == Key.Escape)
+        {
+            e.Handled = true;
+            FindReplaceBar.Visibility = Visibility.Collapsed;
+            Editor.Focus();
+            return;
+        }
+
+        if (!hasControl)
         {
             return;
         }
 
         e.Handled = true;
+
+        switch (e.Key)
+        {
+            case Key.N:
+                await CreateNewSessionWithLockAsync();
+                return;
+
+            case Key.O:
+                await OpenFileAsSessionAsync();
+                return;
+
+            case Key.S when hasShift:
+                await SaveCurrentSessionAsAsync();
+                return;
+
+            case Key.S:
+                await SaveCurrentSessionFromShortcutAsync();
+                return;
+
+            case Key.Add:
+            case Key.OemPlus:
+                ChangeEditorFontSize(EditorFontSizeStep);
+                return;
+
+            case Key.Subtract:
+            case Key.OemMinus:
+                ChangeEditorFontSize(-EditorFontSizeStep);
+                return;
+
+            case Key.D0 when hasControl:
+                ResetEditorFontSize();
+                return;
+
+            default:
+                e.Handled = false;
+                return;
+        }
+    }
+
+    private async Task SaveCurrentSessionFromShortcutAsync()
+    {
         CancelPendingAutosave();
 
         try
@@ -518,8 +596,130 @@ public partial class MainWindow : Window
         }
         catch (Exception exception)
         {
+            MarkSaveError();
             ShowError("Simple Notepad could not save your latest changes.", exception);
         }
+    }
+
+    private async Task OpenFileAsSessionAsync()
+    {
+        var dialog = new OpenFileDialog
+        {
+            Title = "Open file",
+            Filter = "Text and JSON files (*.txt;*.json)|*.txt;*.json|All files (*.*)|*.*",
+            CheckFileExists = true,
+            Multiselect = false
+        };
+
+        if (dialog.ShowDialog(this) != true)
+        {
+            return;
+        }
+
+        try
+        {
+            var content = await File.ReadAllTextAsync(dialog.FileName, StrictUtf8);
+            await _selectionSemaphore.WaitAsync();
+            try
+            {
+                if (_isClosingSaveInProgress)
+                {
+                    return;
+                }
+
+                await SaveCurrentSessionAsync();
+
+                var session = _sessionStorage.CreateSession();
+                session.Title = Path.GetFileName(dialog.FileName);
+                session.Preview = CreatePreview(content);
+                session.UpdatedAt = DateTimeOffset.UtcNow;
+                session.ExpiresAt = session.UpdatedAt.AddDays(7);
+
+                await _sessionStorage.SaveContentAsync(session, content);
+                ReplaceSessionItems(_sessions.Select(item => item.Session).Append(session));
+                await SaveIndexAsync();
+                SessionsList.SelectedItem = _sessions.FirstOrDefault(item => item.Id == session.Id);
+            }
+            finally
+            {
+                _selectionSemaphore.Release();
+            }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or DecoderFallbackException)
+        {
+            MarkSaveError();
+            ShowError("Simple Notepad could not open the selected file.", exception);
+        }
+    }
+
+    private async Task SaveCurrentSessionAsAsync()
+    {
+        var dialog = new SaveFileDialog
+        {
+            Title = "Save as",
+            Filter = "Text files (*.txt)|*.txt|JSON files (*.json)|*.json|All files (*.*)|*.*",
+            FileName = string.IsNullOrWhiteSpace(SessionTitleBox.Text) ? "Untitled.txt" : $"{SessionTitleBox.Text.Trim()}.txt",
+            OverwritePrompt = true
+        };
+
+        if (dialog.ShowDialog(this) != true)
+        {
+            return;
+        }
+
+        try
+        {
+            await File.WriteAllTextAsync(dialog.FileName, Editor.Text, StrictUtf8);
+            await SaveCurrentSessionFromShortcutAsync();
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or EncoderFallbackException)
+        {
+            MarkSaveError();
+            ShowError("Simple Notepad could not save the file.", exception);
+        }
+    }
+
+    private void WordWrapButton_Click(object sender, RoutedEventArgs e)
+    {
+        Editor.WordWrap = !Editor.WordWrap;
+        WordWrapButton.Content = Editor.WordWrap ? "Wrap: On" : "Wrap: Off";
+    }
+
+    private void Editor_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        if ((Keyboard.Modifiers & ModifierKeys.Control) == 0)
+        {
+            return;
+        }
+
+        e.Handled = true;
+        ChangeEditorFontSize(e.Delta > 0 ? EditorFontSizeStep : -EditorFontSizeStep);
+    }
+
+    private void ChangeEditorFontSize(double delta)
+    {
+        Editor.FontSize = Math.Clamp(Editor.FontSize + delta, MinimumEditorFontSize, MaximumEditorFontSize);
+        UpdateStatus();
+    }
+
+    private void ResetEditorFontSize()
+    {
+        Editor.FontSize = 14;
+        UpdateStatus();
+    }
+
+    private void MarkSaveError()
+    {
+        SetSaveState("Error", Color.FromRgb(0xF4, 0x47, 0x47));
+        UpdateStatus();
+    }
+
+    private void SetSaveState(string state, Color color)
+    {
+        _saveState = state;
+        SaveStateText.Text = state;
+        SaveStateText.Foreground = new SolidColorBrush(color);
+        UpdateStatus();
     }
 
     private void SessionSearchBox_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
@@ -734,8 +934,7 @@ public partial class MainWindow : Window
     private void UpdateStatus()
     {
         var location = Editor.TextArea.Caret.Location;
-        var state = _hasUnsavedContent || _hasUnsavedIndex ? "Unsaved" : "Saved";
-        StatusText.Text = $"Ln {location.Line}, Col {location.Column} | {Editor.Text.Length} chars | {state}";
+        StatusText.Text = $"Ln {location.Line}, Col {location.Column} | {Editor.Text.Length} chars | {_saveState}";
     }
 
     private static string CreatePreview(string content)
