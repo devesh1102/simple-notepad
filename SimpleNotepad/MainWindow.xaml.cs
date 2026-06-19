@@ -46,8 +46,15 @@ public partial class MainWindow : Window
 
     private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
-        _settings = await _settingsService.LoadAsync();
-        await LoadSessionsAsync();
+        try
+        {
+            _settings = await _settingsService.LoadAsync();
+            await LoadSessionsAsync();
+        }
+        catch (Exception exception)
+        {
+            ShowError("Simple Notepad could not load sessions.", exception);
+        }
     }
 
     private async void MainWindow_Closing(object? sender, CancelEventArgs e)
@@ -69,9 +76,18 @@ public partial class MainWindow : Window
 
         try
         {
-            await SaveCurrentSessionAsync(refreshSessions: false);
-            await SaveIndexIfNeededAsync();
-            await _settingsService.SaveAsync(_settings);
+            await _selectionSemaphore.WaitAsync();
+            try
+            {
+                await SaveCurrentSessionAsync(refreshSessions: false);
+                await SaveIndexIfNeededAsync();
+                await _settingsService.SaveAsync(_settings);
+            }
+            finally
+            {
+                _selectionSemaphore.Release();
+            }
+
             _isClosingAfterSave = true;
             Close();
         }
@@ -80,11 +96,7 @@ public partial class MainWindow : Window
             _isClosingSaveInProgress = false;
             Editor.IsReadOnly = false;
             SessionTitleBox.IsReadOnly = false;
-            MessageBox.Show(
-                $"Simple Notepad could not save your latest changes:\n\n{exception.Message}",
-                "Save failed",
-                MessageBoxButton.OK,
-                MessageBoxImage.Error);
+            ShowError("Simple Notepad could not save your latest changes.", exception);
         }
     }
 
@@ -114,8 +126,10 @@ public partial class MainWindow : Window
 
     private void ReplaceSessionItems(IEnumerable<NoteSession> sessions)
     {
+        var snapshot = sessions.ToList();
+
         _sessions.Clear();
-        foreach (var session in sessions
+        foreach (var session in snapshot
                      .OrderByDescending(session => session.IsPinned)
                      .ThenByDescending(session => session.UpdatedAt))
         {
@@ -139,7 +153,14 @@ public partial class MainWindow : Window
 
     private async void NewSessionButton_Click(object sender, RoutedEventArgs e)
     {
-        await CreateNewSessionAsync();
+        try
+        {
+            await CreateNewSessionAsync();
+        }
+        catch (Exception exception)
+        {
+            ShowError("Simple Notepad could not create a new session.", exception);
+        }
     }
 
     private async Task CreateNewSessionAsync()
@@ -158,6 +179,12 @@ public partial class MainWindow : Window
     {
         if (_isLoadingSession || _isUpdatingSessions || SessionsList.SelectedItem is not SessionListItem item)
         {
+            return;
+        }
+
+        if (_isClosingSaveInProgress)
+        {
+            RestoreCurrentSelection();
             return;
         }
 
@@ -184,28 +211,31 @@ public partial class MainWindow : Window
         }
         catch (Exception exception)
         {
-            MessageBox.Show(
-                $"Simple Notepad could not switch sessions:\n\n{exception.Message}",
-                "Session switch failed",
-                MessageBoxButton.OK,
-                MessageBoxImage.Error);
+            RestoreCurrentSelection();
+            ShowError("Simple Notepad could not switch sessions.", exception);
         }
         finally
         {
-            Editor.IsReadOnly = false;
-            SessionTitleBox.IsReadOnly = false;
+            if (!_isClosingSaveInProgress)
+            {
+                Editor.IsReadOnly = false;
+                SessionTitleBox.IsReadOnly = false;
+            }
+
             _selectionSemaphore.Release();
         }
     }
 
     private async Task OpenSessionAsync(NoteSession session)
     {
+        var content = await _sessionStorage.LoadContentAsync(session);
+
         _isLoadingSession = true;
         try
         {
             _currentSession = session;
             SessionTitleBox.Text = session.Title;
-            Editor.Text = await _sessionStorage.LoadContentAsync(session);
+            Editor.Text = content;
             _settings.LastSessionId = session.Id;
             _hasUnsavedContent = false;
             _editVersion = 0;
@@ -292,6 +322,19 @@ public partial class MainWindow : Window
         }
     }
 
+    private void RestoreCurrentSelection()
+    {
+        _isUpdatingSessions = true;
+        try
+        {
+            SessionsList.SelectedItem = _sessions.FirstOrDefault(item => item.Id == _currentSession?.Id);
+        }
+        finally
+        {
+            _isUpdatingSessions = false;
+        }
+    }
+
     private void Editor_TextChanged(object? sender, EventArgs e)
     {
         if (_isLoadingSession)
@@ -340,85 +383,99 @@ public partial class MainWindow : Window
 
     private async void DeleteSession_Click(object sender, RoutedEventArgs e)
     {
-        var item = _contextMenuTarget;
-        if (item is null)
+        try
         {
-            return;
-        }
+            var item = _contextMenuTarget;
+            if (item is null)
+            {
+                return;
+            }
 
-        var isDeletingCurrent = _currentSession?.Id == item.Id;
-        var result = MessageBox.Show(
-            $"Delete \"{item.Title}\"?",
-            "Delete session",
-            MessageBoxButton.YesNo,
-            MessageBoxImage.Warning);
+            var isDeletingCurrent = _currentSession?.Id == item.Id;
+            var result = MessageBox.Show(
+                $"Delete \"{item.Title}\"?",
+                "Delete session",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning);
 
-        if (result != MessageBoxResult.Yes)
-        {
-            return;
-        }
+            if (result != MessageBoxResult.Yes)
+            {
+                return;
+            }
 
-        if (isDeletingCurrent)
-        {
-            _currentSession = null;
-            _hasUnsavedContent = false;
-            _hasUnsavedIndex = false;
-            _isLoadingSession = true;
+            if (isDeletingCurrent)
+            {
+                _currentSession = null;
+                _hasUnsavedContent = false;
+                _hasUnsavedIndex = false;
+                _isLoadingSession = true;
+                try
+                {
+                    SessionTitleBox.Text = string.Empty;
+                    Editor.Text = string.Empty;
+                }
+                finally
+                {
+                    _isLoadingSession = false;
+                }
+            }
+
+            await _sessionStorage.DeleteSessionAsync(item.Session);
+
+            _isUpdatingSessions = true;
             try
             {
-                SessionTitleBox.Text = string.Empty;
-                Editor.Text = string.Empty;
+                _sessions.Remove(item);
             }
             finally
             {
-                _isLoadingSession = false;
+                _isUpdatingSessions = false;
+            }
+
+            _hasUnsavedIndex = true;
+
+            await SaveIndexIfNeededAsync();
+
+            if (_sessions.Count == 0)
+            {
+                await CreateNewSessionAsync();
+                return;
+            }
+
+            if (isDeletingCurrent)
+            {
+                SessionsList.SelectedIndex = 0;
+            }
+            else
+            {
+                UpdateSessionItems();
             }
         }
-
-        await _sessionStorage.DeleteSessionAsync(item.Session);
-
-        _isUpdatingSessions = true;
-        try
+        catch (Exception exception)
         {
-            _sessions.Remove(item);
-        }
-        finally
-        {
-            _isUpdatingSessions = false;
-        }
-
-        _hasUnsavedIndex = true;
-
-        await SaveIndexIfNeededAsync();
-
-        if (_sessions.Count == 0)
-        {
-            await CreateNewSessionAsync();
-            return;
-        }
-
-        if (isDeletingCurrent)
-        {
-            SessionsList.SelectedIndex = 0;
-        }
-        else
-        {
-            UpdateSessionItems();
+            ShowError("Simple Notepad could not delete the session.", exception);
         }
     }
 
     private async void PinSession_Click(object sender, RoutedEventArgs e)
     {
-        var item = _contextMenuTarget;
-        if (item is null)
+        try
         {
-            return;
-        }
+            var item = _contextMenuTarget;
+            if (item is null)
+            {
+                return;
+            }
 
-        item.Session.IsPinned = !item.Session.IsPinned;
-        _hasUnsavedIndex = true;
-        await SaveIndexIfNeededAsync();
-        UpdateSessionItems();
+            item.Session.IsPinned = !item.Session.IsPinned;
+            _hasUnsavedIndex = true;
+            await SaveIndexIfNeededAsync();
+            UpdateSessionItems();
+        }
+        catch (Exception exception)
+        {
+            ShowError("Simple Notepad could not update the session pin.", exception);
+        }
     }
 
     private void SessionsList_PreviewMouseRightButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
@@ -463,6 +520,15 @@ public partial class MainWindow : Window
         }
 
         return firstLine.Length <= 80 ? firstLine : $"{firstLine[..80]}...";
+    }
+
+    private static void ShowError(string message, Exception exception)
+    {
+        MessageBox.Show(
+            $"{message}\n\n{exception.Message}",
+            "Simple Notepad",
+            MessageBoxButton.OK,
+            MessageBoxImage.Error);
     }
 
     private static T? FindAncestor<T>(DependencyObject? current)
