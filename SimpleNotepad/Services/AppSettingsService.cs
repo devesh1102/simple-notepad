@@ -18,6 +18,7 @@ public sealed class AppSettingsService
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
 
     private readonly string _settingsPath;
+    private readonly SemaphoreSlim _saveLock = new(1, 1);
 
     public AppSettingsService()
     {
@@ -59,30 +60,38 @@ public sealed class AppSettingsService
             throw new InvalidOperationException("Cannot determine settings directory.");
         }
 
-        Directory.CreateDirectory(directory);
-        var json = JsonSerializer.Serialize(settings, JsonOptions);
-        var tempPath = Path.Combine(directory, $"{SettingsFileName}.{Guid.NewGuid():N}.tmp");
-
+        await _saveLock.WaitAsync(cancellationToken);
         try
         {
-            await File.WriteAllTextAsync(tempPath, json, StrictUtf8, cancellationToken);
+            Directory.CreateDirectory(directory);
+            var json = JsonSerializer.Serialize(settings, JsonOptions);
+            var tempPath = Path.Combine(directory, $"{SettingsFileName}.{Guid.NewGuid():N}.tmp");
 
-            if (File.Exists(_settingsPath))
+            try
             {
-                File.Replace(tempPath, _settingsPath, null, ignoreMetadataErrors: true);
-                return;
-            }
+                await File.WriteAllTextAsync(tempPath, json, StrictUtf8, cancellationToken);
 
-            File.Move(tempPath, _settingsPath);
+                if (File.Exists(_settingsPath))
+                {
+                    File.Replace(tempPath, _settingsPath, null, ignoreMetadataErrors: true);
+                    return;
+                }
+
+                File.Move(tempPath, _settingsPath);
+            }
+            catch
+            {
+                if (File.Exists(tempPath))
+                {
+                    TryDeleteFile(tempPath);
+                }
+
+                throw;
+            }
         }
-        catch
+        finally
         {
-            if (File.Exists(tempPath))
-            {
-                TryDeleteFile(tempPath);
-            }
-
-            throw;
+            _saveLock.Release();
         }
     }
 

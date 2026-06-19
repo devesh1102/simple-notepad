@@ -23,6 +23,7 @@ using MessageBox = System.Windows.MessageBox;
 using OpenFileDialog = Microsoft.Win32.OpenFileDialog;
 using SaveFileDialog = Microsoft.Win32.SaveFileDialog;
 using WpfTextBox = System.Windows.Controls.TextBox;
+using WpfApplication = System.Windows.Application;
 
 namespace SimpleNotepad;
 
@@ -46,6 +47,8 @@ public partial class MainWindow : Window
     private bool _hasUnsavedContent;
     private bool _hasUnsavedIndex;
     private string _saveState = "Saved";
+    private string _currentTheme = "Dark";
+    private bool _currentThemeIsLight;
     private JsonSyntaxColorizer? _jsonColorizer;
     private FoldingManager? _jsonFoldingManager;
     private readonly JsonFoldingStrategy _jsonFoldingStrategy = new();
@@ -72,7 +75,7 @@ public partial class MainWindow : Window
         _sessionsView.Filter = FilterSession;
         SessionsList.ItemsSource = _sessionsView;
 
-        ApplyEditorDarkTheme();
+        ApplyTheme("Dark");
         UpdateJsonState();
 
         Loaded += MainWindow_Loaded;
@@ -88,17 +91,202 @@ public partial class MainWindow : Window
         };
     }
 
-    private void ApplyEditorDarkTheme()
+    private void ApplyTheme(string theme)
     {
-        var bgColor = Color.FromRgb(0x1E, 0x1E, 0x1E);
-        var fgColor = Color.FromRgb(0xD4, 0xD4, 0xD4);
+        var normalized = theme switch
+        {
+            "Light" => "Light",
+            "Dark" => "Dark",
+            _ => "System",
+        };
+        _currentTheme = normalized;
+
+        var isLight = ResolveEffectiveThemeIsLight(normalized);
+        _currentThemeIsLight = isLight;
+
+        var dictionaries = WpfApplication.Current.Resources.MergedDictionaries;
+        for (var i = dictionaries.Count - 1; i >= 0; i--)
+        {
+            if (dictionaries[i].Contains("Theme.IsThemeDictionary"))
+            {
+                dictionaries.RemoveAt(i);
+            }
+        }
+
+        var themeFile = isLight ? "Light" : "Dark";
+        dictionaries.Add(new ResourceDictionary
+        {
+            Source = new Uri($"/SimpleNotepad;component/Themes/{themeFile}.xaml", UriKind.Relative)
+        });
+
+        ApplyEditorTheme(isLight);
+        JsonSyntaxColorizer.ApplyThemeColors(isLight);
+        Editor.TextArea.TextView.Redraw();
+
+        if (ThemeButton is not null)
+        {
+            ThemeButton.Content = $"Theme: {normalized}";
+        }
+    }
+
+    private static bool ResolveEffectiveThemeIsLight(string theme)
+    {
+        return theme switch
+        {
+            "Light" => true,
+            "Dark" => false,
+            _ => IsSystemLightTheme(),
+        };
+    }
+
+    private static bool IsSystemLightTheme()
+    {
+        try
+        {
+            using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
+                @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
+            if (key?.GetValue("AppsUseLightTheme") is int value)
+            {
+                return value != 0;
+            }
+        }
+        catch
+        {
+            // Fall back to dark if the registry is unavailable.
+        }
+
+        return false;
+    }
+
+    private void ApplyEditorTheme(bool isLight)
+    {
+        var bgColor = isLight ? Color.FromRgb(0xFF, 0xFF, 0xFF) : Color.FromRgb(0x1E, 0x1E, 0x1E);
+        var fgColor = isLight ? Color.FromRgb(0x1F, 0x1F, 0x1F) : Color.FromRgb(0xD4, 0xD4, 0xD4);
+        var lineNumberColor = isLight ? Color.FromRgb(0x90, 0x90, 0x90) : Color.FromRgb(0x85, 0x85, 0x85);
+        var linkColor = isLight ? Color.FromRgb(0x00, 0x66, 0xCC) : Color.FromRgb(0x56, 0x9C, 0xD6);
+        var selectionColor = isLight ? Color.FromRgb(0xAD, 0xD6, 0xFF) : Color.FromRgb(0x26, 0x4F, 0x78);
 
         Editor.Background = new SolidColorBrush(bgColor);
         Editor.Foreground = new SolidColorBrush(fgColor);
         Editor.TextArea.Background = new SolidColorBrush(bgColor);
         Editor.TextArea.Foreground = new SolidColorBrush(fgColor);
-        Editor.TextArea.TextView.LinkTextForegroundBrush = new SolidColorBrush(Color.FromRgb(0x56, 0x9C, 0xD6));
-        Editor.LineNumbersForeground = new SolidColorBrush(Color.FromRgb(0x85, 0x85, 0x85));
+        Editor.TextArea.TextView.LinkTextForegroundBrush = new SolidColorBrush(linkColor);
+        Editor.LineNumbersForeground = new SolidColorBrush(lineNumberColor);
+        Editor.TextArea.SelectionBrush = new SolidColorBrush(selectionColor);
+    }
+
+    private void ThemeButton_Click(object sender, RoutedEventArgs e)
+    {
+        var next = _currentTheme switch
+        {
+            "System" => "Light",
+            "Light" => "Dark",
+            _ => "System",
+        };
+
+        ApplyTheme(next);
+        _settings.Theme = next;
+        _ = PersistSettingsAsync();
+    }
+
+    private async Task PersistSettingsAsync()
+    {
+        try
+        {
+            await _settingsService.SaveAsync(_settings);
+        }
+        catch (Exception exception)
+        {
+            ShowError("Simple Notepad could not save settings.", exception);
+        }
+    }
+
+    private void ApplySettingsToUi()
+    {
+        ApplyTheme(_settings.Theme ?? "Dark");
+
+        Editor.WordWrap = _settings.WordWrap;
+        WordWrapButton.Content = Editor.WordWrap ? "Wrap: On" : "Wrap: Off";
+        Editor.FontSize = Math.Clamp(_settings.FontSize, MinimumEditorFontSize, MaximumEditorFontSize);
+
+        if (_settings.SidebarWidth >= SidebarColumn.MinWidth && _settings.SidebarWidth <= 1000)
+        {
+            SidebarColumn.Width = new GridLength(_settings.SidebarWidth);
+        }
+
+        ApplyWindowBounds();
+        UpdateStatus();
+    }
+
+    private void ApplyWindowBounds()
+    {
+        var virtualScreen = new Rect(
+            SystemParameters.VirtualScreenLeft,
+            SystemParameters.VirtualScreenTop,
+            SystemParameters.VirtualScreenWidth,
+            SystemParameters.VirtualScreenHeight);
+
+        if (_settings.WindowWidth is double width && _settings.WindowHeight is double height &&
+            width >= MinWidth && height >= MinHeight)
+        {
+            Width = Math.Min(width, virtualScreen.Width);
+            Height = Math.Min(height, virtualScreen.Height);
+
+            if (_settings.WindowLeft is double left && _settings.WindowTop is double top)
+            {
+                var candidate = new Rect(left, top, Width, Height);
+                var onScreen = virtualScreen.IntersectsWith(candidate) &&
+                               left <= virtualScreen.Right - 80 &&
+                               left + Width >= virtualScreen.Left + 80 &&
+                               top >= virtualScreen.Top &&
+                               top <= virtualScreen.Bottom - 40;
+
+                if (onScreen)
+                {
+                    WindowStartupLocation = WindowStartupLocation.Manual;
+                    Left = left;
+                    Top = top;
+                }
+            }
+        }
+
+        if (_settings.WindowMaximized)
+        {
+            WindowState = WindowState.Maximized;
+        }
+    }
+
+    private void CaptureUiToSettings()
+    {
+        _settings.WordWrap = Editor.WordWrap;
+        _settings.FontSize = Editor.FontSize;
+
+        if (SidebarColumn.ActualWidth > 0)
+        {
+            _settings.SidebarWidth = SidebarColumn.ActualWidth;
+        }
+
+        if (WindowState == WindowState.Maximized)
+        {
+            _settings.WindowMaximized = true;
+
+            var bounds = RestoreBounds;
+            if (bounds != Rect.Empty)
+            {
+                _settings.WindowLeft = bounds.Left;
+                _settings.WindowTop = bounds.Top;
+                _settings.WindowWidth = bounds.Width;
+                _settings.WindowHeight = bounds.Height;
+            }
+        }
+        else if (WindowState == WindowState.Normal)
+        {
+            _settings.WindowMaximized = false;
+            _settings.WindowLeft = Left;
+            _settings.WindowTop = Top;
+            _settings.WindowWidth = Width;
+            _settings.WindowHeight = Height;
+        }
     }
 
     private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
@@ -106,6 +294,7 @@ public partial class MainWindow : Window
         try
         {
             _settings = await _settingsService.LoadAsync();
+            ApplySettingsToUi();
             await LoadSessionsAsync();
         }
         catch (Exception exception)
@@ -149,6 +338,7 @@ public partial class MainWindow : Window
             {
                 await SaveCurrentSessionAsync(refreshSessions: false);
                 await SaveIndexIfNeededAsync();
+                CaptureUiToSettings();
                 await _settingsService.SaveAsync(_settings);
             }
             finally
@@ -209,6 +399,29 @@ public partial class MainWindow : Window
         }
 
         _sessionsView.Refresh();
+        UpdateEmptyState();
+    }
+
+    private void UpdateEmptyState()
+    {
+        if (EmptyStateText is null)
+        {
+            return;
+        }
+
+        var hasAnySessions = _sessions.Count > 0;
+        var visibleCount = _sessionsView.Cast<object>().Count();
+
+        if (visibleCount > 0)
+        {
+            EmptyStateText.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        EmptyStateText.Text = hasAnySessions
+            ? "No sessions match your search."
+            : "No sessions yet. Click \"New Session\" to get started.";
+        EmptyStateText.Visibility = Visibility.Visible;
     }
 
     private bool FilterSession(object item)
@@ -1439,6 +1652,7 @@ public partial class MainWindow : Window
     private void SessionSearchBox_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
     {
         _sessionsView.Refresh();
+        UpdateEmptyState();
     }
 
     private void RenameSession_Click(object sender, RoutedEventArgs e)
@@ -1677,10 +1891,28 @@ public partial class MainWindow : Window
 
     private sealed class JsonSyntaxColorizer : DocumentColorizingTransformer
     {
-        private static readonly SolidColorBrush PropertyBrush = CreateFrozenBrush(0x9C, 0xDC, 0xFE);
-        private static readonly SolidColorBrush StringBrush = CreateFrozenBrush(0xCE, 0x91, 0x78);
-        private static readonly SolidColorBrush NumberBrush = CreateFrozenBrush(0xB5, 0xCE, 0xA8);
-        private static readonly SolidColorBrush KeywordBrush = CreateFrozenBrush(0x56, 0x9C, 0xD6);
+        private static SolidColorBrush PropertyBrush = CreateFrozenBrush(0x9C, 0xDC, 0xFE);
+        private static SolidColorBrush StringBrush = CreateFrozenBrush(0xCE, 0x91, 0x78);
+        private static SolidColorBrush NumberBrush = CreateFrozenBrush(0xB5, 0xCE, 0xA8);
+        private static SolidColorBrush KeywordBrush = CreateFrozenBrush(0x56, 0x9C, 0xD6);
+
+        public static void ApplyThemeColors(bool isLight)
+        {
+            if (isLight)
+            {
+                PropertyBrush = CreateFrozenBrush(0x04, 0x51, 0xA5);
+                StringBrush = CreateFrozenBrush(0xA3, 0x15, 0x15);
+                NumberBrush = CreateFrozenBrush(0x09, 0x86, 0x58);
+                KeywordBrush = CreateFrozenBrush(0x00, 0x00, 0xFF);
+            }
+            else
+            {
+                PropertyBrush = CreateFrozenBrush(0x9C, 0xDC, 0xFE);
+                StringBrush = CreateFrozenBrush(0xCE, 0x91, 0x78);
+                NumberBrush = CreateFrozenBrush(0xB5, 0xCE, 0xA8);
+                KeywordBrush = CreateFrozenBrush(0x56, 0x9C, 0xD6);
+            }
+        }
 
         private IReadOnlyList<(int Start, int End)> _ranges = System.Array.Empty<(int Start, int End)>();
 

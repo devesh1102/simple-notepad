@@ -12,14 +12,11 @@
         MinHeight="480"
         MinWidth="760">
     <Window.Resources>
-        <SolidColorBrush x:Key="MenuItem.Highlight.Background" Color="#094771" />
-        <SolidColorBrush x:Key="MenuItem.Highlight.Border" Color="#094771" />
-
-        <!-- Dark Button style -->
+        <!-- Button style -->
         <Style TargetType="Button">
-            <Setter Property="Background" Value="#3C3C3C" />
-            <Setter Property="Foreground" Value="#D4D4D4" />
-            <Setter Property="BorderBrush" Value="#555555" />
+            <Setter Property="Background" Value="{DynamicResource Brush.ControlBackground}" />
+            <Setter Property="Foreground" Value="{DynamicResource Brush.PrimaryText}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.ControlBorder}" />
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="Padding" Value="8,4" />
             <Setter Property="Cursor" Value="Hand" />
@@ -36,10 +33,10 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter Property="Background" Value="#505050" />
+                                <Setter Property="Background" Value="{DynamicResource Brush.ControlHover}" />
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter Property="Background" Value="#2A2A2A" />
+                                <Setter Property="Background" Value="{DynamicResource Brush.ControlPressed}" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -47,14 +44,14 @@
             </Setter>
         </Style>
 
-        <!-- Dark TextBox style -->
+        <!-- TextBox style -->
         <Style TargetType="TextBox">
-            <Setter Property="Background" Value="#3C3C3C" />
-            <Setter Property="Foreground" Value="#D4D4D4" />
-            <Setter Property="BorderBrush" Value="#555555" />
+            <Setter Property="Background" Value="{DynamicResource Brush.ControlBackground}" />
+            <Setter Property="Foreground" Value="{DynamicResource Brush.PrimaryText}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.ControlBorder}" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CaretBrush" Value="#D4D4D4" />
-            <Setter Property="SelectionBrush" Value="#264F78" />
+            <Setter Property="CaretBrush" Value="{DynamicResource Brush.PrimaryText}" />
+            <Setter Property="SelectionBrush" Value="{DynamicResource Brush.SelectionBrush}" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="TextBox">
@@ -67,7 +64,7 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsFocused" Value="True">
-                                <Setter Property="BorderBrush" Value="#007ACC" />
+                                <Setter Property="BorderBrush" Value="{DynamicResource Brush.Accent}" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -75,16 +72,16 @@
             </Setter>
         </Style>
 
-        <!-- Dark CheckBox style -->
+        <!-- CheckBox style -->
         <Style TargetType="CheckBox">
-            <Setter Property="Foreground" Value="#D4D4D4" />
+            <Setter Property="Foreground" Value="{DynamicResource Brush.PrimaryText}" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
         </Style>
 
-        <!-- Dark ListBoxItem style -->
+        <!-- ListBoxItem style -->
         <Style TargetType="ListBoxItem">
             <Setter Property="Background" Value="Transparent" />
-            <Setter Property="Foreground" Value="#D4D4D4" />
+            <Setter Property="Foreground" Value="{DynamicResource Brush.PrimaryText}" />
             <Setter Property="Padding" Value="4,2" />
             <Setter Property="Template">
                 <Setter.Value>
@@ -98,10 +95,10 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="ItemBorder" Property="Background" Value="#2A2D2E" />
+                                <Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource Brush.ListHover}" />
                             </Trigger>
                             <Trigger Property="IsSelected" Value="True">
-                                <Setter TargetName="ItemBorder" Property="Background" Value="#094771" />
+                                <Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource Brush.ListSelected}" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -109,42 +106,42 @@
             </Setter>
         </Style>
 
-        <!-- Dark ContextMenu style -->
+        <!-- ContextMenu style -->
         <Style TargetType="ContextMenu">
-            <Setter Property="Background" Value="#2D2D30" />
-            <Setter Property="BorderBrush" Value="#3C3C3C" />
-            <Setter Property="Foreground" Value="#D4D4D4" />
+            <Setter Property="Background" Value="{DynamicResource Brush.MenuBackground}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border}" />
+            <Setter Property="Foreground" Value="{DynamicResource Brush.PrimaryText}" />
         </Style>
 
-        <!-- Dark MenuItem style -->
+        <!-- MenuItem style -->
         <Style TargetType="MenuItem">
-            <Setter Property="Foreground" Value="#D4D4D4" />
-            <Setter Property="Background" Value="#2D2D30" />
+            <Setter Property="Foreground" Value="{DynamicResource Brush.PrimaryText}" />
+            <Setter Property="Background" Value="{DynamicResource Brush.MenuBackground}" />
             <Style.Triggers>
                 <Trigger Property="IsHighlighted" Value="True">
-                    <Setter Property="Background" Value="{StaticResource MenuItem.Highlight.Background}" />
-                    <Setter Property="BorderBrush" Value="{StaticResource MenuItem.Highlight.Border}" />
-                    <Setter Property="Foreground" Value="#FFFFFF" />
+                    <Setter Property="Background" Value="{DynamicResource Brush.MenuHighlight}" />
+                    <Setter Property="BorderBrush" Value="{DynamicResource Brush.MenuHighlight}" />
+                    <Setter Property="Foreground" Value="{DynamicResource Brush.MenuHighlightText}" />
                 </Trigger>
             </Style.Triggers>
         </Style>
 
-        <!-- Dark Separator style -->
+        <!-- Separator style -->
         <Style TargetType="Separator">
-            <Setter Property="Background" Value="#3C3C3C" />
+            <Setter Property="Background" Value="{DynamicResource Brush.Border}" />
         </Style>
     </Window.Resources>
 
-    <Grid Background="#1E1E1E">
+    <Grid Background="{DynamicResource Brush.WindowBackground}">
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="280" MinWidth="220" />
+            <ColumnDefinition x:Name="SidebarColumn" Width="280" MinWidth="220" />
             <ColumnDefinition Width="5" />
             <ColumnDefinition Width="*" MinWidth="420" />
         </Grid.ColumnDefinitions>
 
         <Border Grid.Column="0"
-                Background="#252526"
-                BorderBrush="#3C3C3C"
+                Background="{DynamicResource Brush.SidebarBackground}"
+                BorderBrush="{DynamicResource Brush.Border}"
                 BorderThickness="0,0,1,0">
             <Grid Margin="14">
                 <Grid.RowDefinitions>
@@ -157,7 +154,7 @@
                 <TextBlock Text="Sessions"
                            FontSize="20"
                            FontWeight="SemiBold"
-                           Foreground="#D4D4D4" />
+                           Foreground="{DynamicResource Brush.PrimaryText}" />
 
                 <Button x:Name="NewSessionButton"
                         Grid.Row="1"
@@ -195,31 +192,42 @@
                             <StackPanel Margin="4">
                                 <TextBlock Text="{Binding Title}"
                                            FontWeight="SemiBold"
-                                           Foreground="#D4D4D4"
+                                           Foreground="{DynamicResource Brush.PrimaryText}"
                                            TextTrimming="CharacterEllipsis" />
                                 <TextBlock Margin="0,3,0,0"
                                            Text="{Binding ExpiryText}"
                                            FontSize="12"
-                                           Foreground="#9DA5B4" />
+                                           Foreground="{DynamicResource Brush.SecondaryText}" />
                                 <TextBlock Margin="0,3,0,0"
                                            Text="{Binding LastModifiedText}"
                                            FontSize="12"
-                                           Foreground="#9DA5B4" />
+                                           Foreground="{DynamicResource Brush.SecondaryText}" />
                                 <TextBlock Margin="0,3,0,0"
                                            Text="{Binding Preview}"
                                            FontSize="12"
-                                           Foreground="#9DA5B4"
+                                           Foreground="{DynamicResource Brush.SecondaryText}"
                                            TextTrimming="CharacterEllipsis" />
                             </StackPanel>
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>
+
+                <TextBlock x:Name="EmptyStateText"
+                           Grid.Row="3"
+                           Margin="16,24"
+                           TextWrapping="Wrap"
+                           TextAlignment="Center"
+                           VerticalAlignment="Top"
+                           FontSize="13"
+                           Foreground="{DynamicResource Brush.SecondaryText}"
+                           Visibility="Collapsed"
+                           Text="No sessions yet. Click &quot;New Session&quot; to get started." />
             </Grid>
         </Border>
 
         <GridSplitter Grid.Column="1"
                       HorizontalAlignment="Stretch"
-                      Background="#3C3C3C" />
+                      Background="{DynamicResource Brush.Border}" />
 
         <Grid Grid.Column="2">
             <Grid.RowDefinitions>
@@ -231,8 +239,8 @@
 
             <Border Grid.Row="0"
                     Padding="16,12"
-                    Background="#2D2D30"
-                    BorderBrush="#3C3C3C"
+                    Background="{DynamicResource Brush.ToolbarBackground}"
+                    BorderBrush="{DynamicResource Brush.Border}"
                     BorderThickness="0,0,0,1">
                 <DockPanel LastChildFill="True">
                     <StackPanel DockPanel.Dock="Right"
@@ -262,16 +270,22 @@
                                Content="Wrap: On"
                                ToolTip="Toggle word wrap"
                                Click="WordWrapButton_Click" />
+                        <Button x:Name="ThemeButton"
+                               Margin="0,0,12,0"
+                               Padding="8,3"
+                               Content="Theme: Dark"
+                               ToolTip="Switch theme (System / Light / Dark)"
+                               Click="ThemeButton_Click" />
                         <TextBlock x:Name="SaveStateText"
                                   Text="Saved"
-                                  Foreground="#4EC9B0"
+                                  Foreground="{DynamicResource Brush.SaveStateDefault}"
                                   VerticalAlignment="Center" />
                     </StackPanel>
                     <TextBox x:Name="SessionTitleBox"
                              Text="Untitled"
                                FontSize="18"
                                FontWeight="SemiBold"
-                               Foreground="#D4D4D4"
+                               Foreground="{DynamicResource Brush.PrimaryText}"
                              BorderThickness="0"
                              Background="Transparent"
                              VerticalAlignment="Center"
@@ -282,13 +296,13 @@
             <Border x:Name="FindReplaceBar"
                     Grid.Row="1"
                     Padding="10"
-                    Background="#2D2D30"
-                    BorderBrush="#3C3C3C"
+                    Background="{DynamicResource Brush.ToolbarBackground}"
+                    BorderBrush="{DynamicResource Brush.Border}"
                     BorderThickness="0,0,0,1"
                     Visibility="Collapsed">
                 <DockPanel LastChildFill="False">
                     <TextBlock Text="Find"
-                               Foreground="#D4D4D4"
+                               Foreground="{DynamicResource Brush.PrimaryText}"
                                VerticalAlignment="Center"
                                Margin="0,0,6,0" />
                     <TextBox x:Name="FindTextBox"
@@ -298,7 +312,7 @@
                              TextChanged="FindTextBox_TextChanged"
                              PreviewKeyDown="FindReplaceTextBox_PreviewKeyDown" />
                     <TextBlock Text="Replace"
-                               Foreground="#D4D4D4"
+                               Foreground="{DynamicResource Brush.PrimaryText}"
                                VerticalAlignment="Center"
                                Margin="0,0,6,0" />
                     <TextBox x:Name="ReplaceTextBox"
@@ -329,7 +343,7 @@
                              Checked="FindOptionsChanged"
                              Unchecked="FindOptionsChanged" />
                     <TextBlock x:Name="MatchCountText"
-                              Foreground="#9DA5B4"
+                              Foreground="{DynamicResource Brush.SecondaryText}"
                               VerticalAlignment="Center"
                               Margin="0,0,10,0"
                               Text="0 matches" />
@@ -340,8 +354,8 @@
 
             <Border Grid.Row="2"
                     Margin="16"
-                    Background="#1E1E1E"
-                    BorderBrush="#3C3C3C"
+                    Background="{DynamicResource Brush.EditorBackground}"
+                    BorderBrush="{DynamicResource Brush.Border}"
                     BorderThickness="1">
                 <avalonEdit:TextEditor x:Name="Editor"
                                        ShowLineNumbers="True"
@@ -349,8 +363,8 @@
                                        FontSize="14"
                                        Padding="8"
                                        WordWrap="True"
-                                       Background="#1E1E1E"
-                                       Foreground="#D4D4D4"
+                                       Background="{DynamicResource Brush.EditorBackground}"
+                                       Foreground="{DynamicResource Brush.EditorForeground}"
                                        AllowDrop="True"
                                        PreviewDragOver="Editor_PreviewDragOver"
                                        PreviewDrop="Editor_PreviewDrop"
@@ -394,17 +408,17 @@
 
             <Border Grid.Row="3"
                     Padding="12,7"
-                    Background="#2D2D30"
-                    BorderBrush="#3C3C3C"
+                    Background="{DynamicResource Brush.ToolbarBackground}"
+                    BorderBrush="{DynamicResource Brush.Border}"
                     BorderThickness="0,1,0,0">
                 <DockPanel LastChildFill="True">
                     <TextBlock x:Name="LinkedPowerShellStatusText"
                                DockPanel.Dock="Right"
                                Text="PS: normal disconnected, admin disconnected"
-                               Foreground="#9DA5B4" />
+                               Foreground="{DynamicResource Brush.SecondaryText}" />
                     <TextBlock x:Name="StatusText"
                                Text="Ln 1, Col 1 | 0 chars | Saved"
-                               Foreground="#9DA5B4" />
+                               Foreground="{DynamicResource Brush.SecondaryText}" />
                 </DockPanel>
             </Border>
         </Grid>
