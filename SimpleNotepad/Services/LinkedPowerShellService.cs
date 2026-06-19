@@ -14,6 +14,11 @@ public enum LinkedPowerShellTarget
 public sealed class LinkedPowerShellService : IDisposable
 {
     private const int SwRestore = 9;
+    private const int InputKeyboard = 1;
+    private const ushort KeyEventKeyUp = 0x0002;
+    private const ushort VirtualKeyControl = 0x11;
+    private const ushort VirtualKeyV = 0x56;
+    private const ushort VirtualKeyReturn = 0x0D;
     private readonly Dictionary<LinkedPowerShellTarget, LinkedPowerShellSession> _sessions = [];
 
     public string GetSessionDescription(LinkedPowerShellTarget target)
@@ -194,7 +199,7 @@ public sealed class LinkedPowerShellService : IDisposable
         {
             Forms.Clipboard.SetText(command, Forms.TextDataFormat.UnicodeText);
             Thread.Sleep(millisecondsTimeout: 100);
-            Forms.SendKeys.SendWait("^v{ENTER}");
+            SendPasteAndEnterInput();
             Thread.Sleep(millisecondsTimeout: 250);
         }
         catch (ExternalException exception)
@@ -356,6 +361,68 @@ catch {
 
     [DllImport("user32.dll")]
     private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern uint SendInput(uint cInputs, Input[] pInputs, int cbSize);
+
+    private static void SendPasteAndEnterInput()
+    {
+        var inputs = new[]
+        {
+            CreateKeyInput(VirtualKeyControl, keyUp: false),
+            CreateKeyInput(VirtualKeyV, keyUp: false),
+            CreateKeyInput(VirtualKeyV, keyUp: true),
+            CreateKeyInput(VirtualKeyControl, keyUp: true),
+            CreateKeyInput(VirtualKeyReturn, keyUp: false),
+            CreateKeyInput(VirtualKeyReturn, keyUp: true)
+        };
+
+        var sent = SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<Input>());
+        if (sent != inputs.Length)
+        {
+            throw new InvalidOperationException("Simple Notepad could not send input to linked PowerShell.");
+        }
+    }
+
+    private static Input CreateKeyInput(ushort virtualKey, bool keyUp)
+    {
+        return new Input
+        {
+            Type = InputKeyboard,
+            Union = new InputUnion
+            {
+                KeyboardInput = new KeyboardInput
+                {
+                    VirtualKey = virtualKey,
+                    Flags = keyUp ? KeyEventKeyUp : (ushort)0
+                }
+            }
+        };
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct Input
+    {
+        public int Type;
+        public InputUnion Union;
+    }
+
+    [StructLayout(LayoutKind.Explicit)]
+    private struct InputUnion
+    {
+        [FieldOffset(0)]
+        public KeyboardInput KeyboardInput;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct KeyboardInput
+    {
+        public ushort VirtualKey;
+        public ushort Scan;
+        public uint Flags;
+        public uint Time;
+        public IntPtr ExtraInfo;
+    }
 
     private sealed class LinkedPowerShellSession(string id)
     {
