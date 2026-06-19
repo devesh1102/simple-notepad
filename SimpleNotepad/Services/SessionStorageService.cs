@@ -51,7 +51,7 @@ public sealed class SessionStorageService
         {
             await using var stream = File.OpenRead(_indexPath);
             var sessions = await JsonSerializer.DeserializeAsync<List<NoteSession>>(stream, JsonOptions, cancellationToken);
-            return sessions ?? [];
+            return ValidateSessions(sessions ?? []);
         }
         catch (JsonException)
         {
@@ -142,12 +142,53 @@ public sealed class SessionStorageService
 
     private string GetSessionContentPath(NoteSession session)
     {
-        if (Path.IsPathRooted(session.FilePath))
+        if (session is null)
+        {
+            throw new InvalidOperationException("Session cannot be null.");
+        }
+
+        return ResolveSessionContentPath(session.FilePath);
+    }
+
+    private IReadOnlyList<NoteSession> ValidateSessions(IEnumerable<NoteSession?> sessions)
+    {
+        return sessions.Where(IsValidSession).Cast<NoteSession>().ToList();
+    }
+
+    private bool IsValidSession(NoteSession? session)
+    {
+        if (session is null ||
+            string.IsNullOrWhiteSpace(session.Id) ||
+            string.IsNullOrWhiteSpace(session.Title) ||
+            string.IsNullOrWhiteSpace(session.FilePath))
+        {
+            return false;
+        }
+
+        try
+        {
+            _ = ResolveSessionContentPath(session.FilePath);
+            return true;
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
+    }
+
+    private string ResolveSessionContentPath(string filePath)
+    {
+        if (string.IsNullOrWhiteSpace(filePath))
+        {
+            throw new InvalidOperationException("Session file path cannot be empty.");
+        }
+
+        if (Path.IsPathRooted(filePath))
         {
             throw new InvalidOperationException("Session file paths must be relative to the app storage folder.");
         }
 
-        var fullPath = Path.GetFullPath(Path.Combine(_rootPath, session.FilePath));
+        var fullPath = Path.GetFullPath(Path.Combine(_rootPath, filePath));
         var allowedRoot = Path.GetFullPath(_sessionsPath);
 
         if (!fullPath.StartsWith(allowedRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
@@ -172,7 +213,7 @@ public sealed class SessionStorageService
             {
                 await using var stream = File.OpenRead(backupPath);
                 var sessions = await JsonSerializer.DeserializeAsync<List<NoteSession>>(stream, JsonOptions, cancellationToken);
-                return sessions ?? [];
+                return ValidateSessions(sessions ?? []);
             }
             catch (JsonException)
             {
