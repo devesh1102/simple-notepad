@@ -815,7 +815,19 @@ public partial class MainWindow : Window
     {
         if (!string.IsNullOrWhiteSpace(Editor.SelectedText))
         {
-            return (Editor.SelectedText, Editor.SelectionStart, Editor.SelectionLength);
+            if (TryFormatJson(Editor.SelectedText, writeIndented: false, out _, out _))
+            {
+                return (Editor.SelectedText, Editor.SelectionStart, Editor.SelectionLength);
+            }
+
+            var selectionStart = Editor.SelectionStart;
+            var selectionEnd = selectionStart + Editor.SelectionLength;
+            if (JsonFoldingStrategy.TryFindJsonTargetInRange(Editor.Text, Editor.TextArea.Caret.Offset, selectionStart, selectionEnd, out var selectedTarget))
+            {
+                return selectedTarget;
+            }
+
+            return (Editor.SelectedText, selectionStart, Editor.SelectionLength);
         }
 
         if (JsonFoldingStrategy.TryFindJsonTarget(Editor.Text, Editor.TextArea.Caret.Offset, out var target))
@@ -1676,7 +1688,7 @@ public partial class MainWindow : Window
 
     private sealed class JsonFoldingStrategy
     {
-        private const int MaxCandidateLength = 50_000;
+        private const int MaxCandidateLength = JsonAutoValidationMaxLength;
 
         public static bool TryFindJsonTarget(string text, int offset, out (string Text, int Start, int Length) target)
         {
@@ -1696,7 +1708,7 @@ public partial class MainWindow : Window
                     continue;
                 }
 
-                if (bestMatch is null || end - start < bestMatch.Value.End - bestMatch.Value.Start)
+                if (bestMatch is null || end - start > bestMatch.Value.End - bestMatch.Value.Start)
                 {
                     bestMatch = (start, end);
                 }
@@ -1709,6 +1721,48 @@ public partial class MainWindow : Window
 
             var match = bestMatch.Value;
             target = (text[match.Start..match.End], match.Start, match.End - match.Start);
+            return true;
+        }
+
+        public static bool TryFindJsonTargetInRange(
+            string text,
+            int offset,
+            int rangeStart,
+            int rangeEnd,
+            out (string Text, int Start, int Length) target)
+        {
+            target = default;
+            if (string.IsNullOrWhiteSpace(text) || rangeStart < 0 || rangeEnd > text.Length || rangeStart >= rangeEnd)
+            {
+                return false;
+            }
+
+            offset = Math.Clamp(offset, rangeStart, rangeEnd);
+            (int Start, int End)? bestContainingMatch = null;
+            (int Start, int End)? firstMatch = null;
+
+            foreach (var (start, end) in FindJsonCandidates(text))
+            {
+                if (start < rangeStart || end > rangeEnd)
+                {
+                    continue;
+                }
+
+                firstMatch ??= (start, end);
+                if (start <= offset && end >= offset &&
+                    (bestContainingMatch is null || end - start > bestContainingMatch.Value.End - bestContainingMatch.Value.Start))
+                {
+                    bestContainingMatch = (start, end);
+                }
+            }
+
+            var match = bestContainingMatch ?? firstMatch;
+            if (match is null)
+            {
+                return false;
+            }
+
+            target = (text[match.Value.Start..match.Value.End], match.Value.Start, match.Value.End - match.Value.Start);
             return true;
         }
 
