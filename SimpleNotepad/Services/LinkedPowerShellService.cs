@@ -43,7 +43,12 @@ public sealed class LinkedPowerShellService : IDisposable
 
         return RunOnStaThreadAsync(() =>
         {
-            EnsureStarted(target);
+            if (!IsRunning(target))
+            {
+                StartNormalWithInitialCommand(command);
+                return;
+            }
+
             var process = GetSession(target).Process
                 ?? throw new InvalidOperationException("Linked PowerShell is not running.");
             SendCommandToInteractiveWindow(process, command);
@@ -134,6 +139,23 @@ public sealed class LinkedPowerShellService : IDisposable
             ?? throw new InvalidOperationException("Linked PowerShell did not start.");
     }
 
+    private void StartNormalWithInitialCommand(string command)
+    {
+        var session = GetSession(LinkedPowerShellTarget.Normal);
+        var script = CreateNormalStartupScript(session, command);
+        var encodedCommand = Convert.ToBase64String(Encoding.Unicode.GetBytes(script));
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = "powershell.exe",
+            Arguments = $"-NoExit -NoProfile -ExecutionPolicy Bypass -EncodedCommand {encodedCommand}",
+            UseShellExecute = false,
+            WorkingDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
+        };
+
+        session.Process = Process.Start(startInfo)
+            ?? throw new InvalidOperationException("Linked PowerShell did not start.");
+    }
+
     private void StartAdminCommand(string command)
     {
         var session = GetSession(LinkedPowerShellTarget.Admin);
@@ -166,12 +188,14 @@ public sealed class LinkedPowerShellService : IDisposable
             throw new InvalidOperationException("Simple Notepad could not focus linked PowerShell.");
         }
 
+        Thread.Sleep(millisecondsTimeout: 250);
         var previousClipboard = TryCreateClipboardSnapshot();
         try
         {
             Forms.Clipboard.SetText(command, Forms.TextDataFormat.UnicodeText);
-            Forms.SendKeys.SendWait("^v");
-            Forms.SendKeys.SendWait("{ENTER}");
+            Thread.Sleep(millisecondsTimeout: 100);
+            Forms.SendKeys.SendWait("^v{ENTER}");
+            Thread.Sleep(millisecondsTimeout: 250);
         }
         catch (ExternalException exception)
         {
@@ -299,6 +323,25 @@ $host.UI.RawUI.WindowTitle = '{{escapedTitle}}'
 $command = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('{{encodedCommand}}'))
 Write-Host 'SimpleNotepad admin command' -ForegroundColor Yellow
 Write-Host $command -ForegroundColor Yellow
+try {
+    Invoke-Expression $command
+}
+catch {
+    Write-Error $_
+}
+""";
+    }
+
+    private static string CreateNormalStartupScript(LinkedPowerShellSession session, string command)
+    {
+        var escapedTitle = EscapePowerShellSingleQuotedString($"SimpleNotepad Linked PowerShell - {session.Id}");
+        var encodedCommand = Convert.ToBase64String(Encoding.UTF8.GetBytes(command));
+
+        return $$"""
+$host.UI.RawUI.WindowTitle = '{{escapedTitle}}'
+Write-Host 'Linked to SimpleNotepad. You can use this as a normal PowerShell window.' -ForegroundColor Cyan
+$command = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('{{encodedCommand}}'))
+Write-Host ('SimpleNotepad> ' + $command) -ForegroundColor Yellow
 try {
     Invoke-Expression $command
 }

@@ -818,6 +818,11 @@ public partial class MainWindow : Window
             return (Editor.SelectedText, Editor.SelectionStart, Editor.SelectionLength);
         }
 
+        if (JsonFoldingStrategy.TryFindJsonTarget(Editor.Text, Editor.TextArea.Caret.Offset, out var target))
+        {
+            return target;
+        }
+
         return (Editor.Text, 0, Editor.Text.Length);
     }
 
@@ -1668,6 +1673,40 @@ public partial class MainWindow : Window
     {
         private const int MaxCandidateLength = 50_000;
 
+        public static bool TryFindJsonTarget(string text, int offset, out (string Text, int Start, int Length) target)
+        {
+            target = default;
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return false;
+            }
+
+            offset = Math.Clamp(offset, 0, text.Length);
+            (int Start, int End)? bestMatch = null;
+
+            foreach (var (start, end) in FindJsonCandidates(text))
+            {
+                if (start > offset || end < offset)
+                {
+                    continue;
+                }
+
+                if (bestMatch is null || end - start < bestMatch.Value.End - bestMatch.Value.Start)
+                {
+                    bestMatch = (start, end);
+                }
+            }
+
+            if (bestMatch is null)
+            {
+                return false;
+            }
+
+            var match = bestMatch.Value;
+            target = (text[match.Start..match.End], match.Start, match.End - match.Start);
+            return true;
+        }
+
         public bool UpdateFoldings(FoldingManager manager, TextDocument document)
         {
             var foldings = CreateNewFoldings(document).ToList();
@@ -1678,6 +1717,24 @@ public partial class MainWindow : Window
         private static IEnumerable<NewFolding> CreateNewFoldings(TextDocument document)
         {
             var text = document.Text;
+            foreach (var (index, endOffset) in FindJsonCandidates(text))
+            {
+                var startLine = document.GetLineByOffset(index).LineNumber;
+                var endLine = document.GetLineByOffset(endOffset - 1).LineNumber;
+                if (startLine == endLine)
+                {
+                    continue;
+                }
+
+                yield return new NewFolding(index, endOffset)
+                {
+                    Name = text[index] == '{' ? "{...}" : "[...]"
+                };
+            }
+        }
+
+        private static IEnumerable<(int Start, int End)> FindJsonCandidates(string text)
+        {
             for (var index = 0; index < text.Length; index++)
             {
                 if (text[index] is not ('{' or '['))
@@ -1695,23 +1752,13 @@ public partial class MainWindow : Window
                     continue;
                 }
 
-                var startLine = document.GetLineByOffset(index).LineNumber;
-                var endLine = document.GetLineByOffset(endOffset - 1).LineNumber;
-                if (startLine == endLine)
-                {
-                    continue;
-                }
-
                 var candidateJson = text[index..endOffset];
                 if (!TryFormatJson(candidateJson, writeIndented: false, out _, out _))
                 {
                     continue;
                 }
 
-                yield return new NewFolding(index, endOffset)
-                {
-                    Name = text[index] == '{' ? "{...}" : "[...]"
-                };
+                yield return (index, endOffset);
             }
         }
 
