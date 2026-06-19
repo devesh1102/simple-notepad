@@ -188,8 +188,26 @@ public sealed class SessionStorageService
             throw new InvalidOperationException("Session file paths must be relative to the app storage folder.");
         }
 
-        var fullPath = Path.GetFullPath(Path.Combine(_rootPath, filePath));
-        var allowedRoot = Path.GetFullPath(_sessionsPath);
+        string fullPath;
+        string allowedRoot;
+
+        try
+        {
+            fullPath = Path.GetFullPath(Path.Combine(_rootPath, filePath));
+            allowedRoot = Path.GetFullPath(_sessionsPath);
+        }
+        catch (ArgumentException exception)
+        {
+            throw new InvalidOperationException("Session file path is malformed.", exception);
+        }
+        catch (NotSupportedException exception)
+        {
+            throw new InvalidOperationException("Session file path is not supported.", exception);
+        }
+        catch (PathTooLongException exception)
+        {
+            throw new InvalidOperationException("Session file path is too long.", exception);
+        }
 
         if (!fullPath.StartsWith(allowedRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
         {
