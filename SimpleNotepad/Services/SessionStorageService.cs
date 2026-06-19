@@ -89,15 +89,15 @@ public sealed class SessionStorageService
         catch (DecoderFallbackException exception)
         {
             await QuarantineFileAsync(path, cancellationToken);
-            throw new InvalidOperationException($"Session content was not valid UTF-8 and was moved to quarantine: {path}", exception);
+            return await LoadBackupContentAsync(path, exception, cancellationToken);
         }
         catch (IOException exception)
         {
-            throw new InvalidOperationException($"Session content could not be read: {path}", exception);
+            return await LoadBackupContentAsync(path, exception, cancellationToken);
         }
         catch (UnauthorizedAccessException exception)
         {
-            throw new InvalidOperationException($"Session content could not be accessed: {path}", exception);
+            return await LoadBackupContentAsync(path, exception, cancellationToken);
         }
     }
 
@@ -136,10 +136,18 @@ public sealed class SessionStorageService
     {
         if (Path.IsPathRooted(session.FilePath))
         {
-            return session.FilePath;
+            throw new InvalidOperationException("Session file paths must be relative to the app storage folder.");
         }
 
-        return Path.Combine(_rootPath, session.FilePath);
+        var fullPath = Path.GetFullPath(Path.Combine(_rootPath, session.FilePath));
+        var allowedRoot = Path.GetFullPath(_sessionsPath);
+
+        if (!fullPath.StartsWith(allowedRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException("Session file path resolves outside the app sessions folder.");
+        }
+
+        return fullPath;
     }
 
     private void EnsureStorageFolders()
@@ -157,9 +165,22 @@ public sealed class SessionStorageService
             return [];
         }
 
-        await using var stream = File.OpenRead(backupPath);
-        var sessions = await JsonSerializer.DeserializeAsync<List<NoteSession>>(stream, JsonOptions, cancellationToken);
-        return sessions ?? [];
+        try
+        {
+            await using var stream = File.OpenRead(backupPath);
+            var sessions = await JsonSerializer.DeserializeAsync<List<NoteSession>>(stream, JsonOptions, cancellationToken);
+            return sessions ?? [];
+        }
+        catch (JsonException)
+        {
+            await QuarantineFileAsync(backupPath, cancellationToken);
+            return [];
+        }
+        catch (DecoderFallbackException)
+        {
+            await QuarantineFileAsync(backupPath, cancellationToken);
+            return [];
+        }
     }
 
     private static async Task AtomicWriteTextAsync(string path, string content, CancellationToken cancellationToken)
@@ -177,18 +198,61 @@ public sealed class SessionStorageService
 
         await File.WriteAllTextAsync(tempPath, content, StrictUtf8, cancellationToken);
 
-        if (File.Exists(path))
+        try
         {
-            if (File.Exists(backupPath))
+            if (File.Exists(path))
             {
-                File.Delete(backupPath);
+                if (File.Exists(backupPath))
+                {
+                    File.Delete(backupPath);
+                }
+
+                File.Replace(tempPath, path, backupPath, ignoreMetadataErrors: true);
+                return;
             }
 
-            File.Replace(tempPath, path, backupPath, ignoreMetadataErrors: true);
-            return;
+            File.Move(tempPath, path);
+        }
+        catch
+        {
+            if (File.Exists(tempPath))
+            {
+                File.Delete(tempPath);
+            }
+
+            throw;
+        }
+    }
+
+    private static async Task<string> LoadBackupContentAsync(
+        string path,
+        Exception originalException,
+        CancellationToken cancellationToken)
+    {
+        var backupPath = GetBackupPath(path);
+
+        if (!File.Exists(backupPath))
+        {
+            throw new InvalidOperationException($"Session content could not be read and no backup exists: {path}", originalException);
         }
 
-        File.Move(tempPath, path);
+        try
+        {
+            return await File.ReadAllTextAsync(backupPath, StrictUtf8, cancellationToken);
+        }
+        catch (DecoderFallbackException backupException)
+        {
+            await QuarantineFileAsync(backupPath, cancellationToken);
+            throw new InvalidOperationException($"Session content and backup were unreadable: {path}", backupException);
+        }
+        catch (IOException backupException)
+        {
+            throw new InvalidOperationException($"Session content and backup could not be read: {path}", backupException);
+        }
+        catch (UnauthorizedAccessException backupException)
+        {
+            throw new InvalidOperationException($"Session content backup could not be accessed: {backupPath}", backupException);
+        }
     }
 
     private static async Task QuarantineFileAsync(string path, CancellationToken cancellationToken)
@@ -204,9 +268,7 @@ public sealed class SessionStorageService
             return;
         }
 
-        var quarantinePath = Path.Combine(
-            directory,
-            $"{Path.GetFileName(path)}.corrupt.{DateTimeOffset.UtcNow:yyyyMMddHHmmss}");
+        var quarantinePath = Path.Combine(directory, $"{Path.GetFileName(path)}.corrupt.{Guid.NewGuid():N}");
 
         await Task.Run(() => File.Move(path, quarantinePath), cancellationToken);
     }
