@@ -10,6 +10,7 @@ using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
 using ICSharpCode.AvalonEdit.Document;
+using ICSharpCode.AvalonEdit.Folding;
 using ICSharpCode.AvalonEdit.Rendering;
 using Microsoft.Win32;
 using SimpleNotepad.Models;
@@ -22,6 +23,7 @@ public partial class MainWindow : Window
 {
     private readonly SessionStorageService _sessionStorage = new();
     private readonly AppSettingsService _settingsService = new();
+    private readonly LinkedPowerShellService _linkedPowerShell = new();
     private readonly ObservableCollection<SessionListItem> _sessions = [];
     private readonly ICollectionView _sessionsView;
 
@@ -38,6 +40,8 @@ public partial class MainWindow : Window
     private bool _hasUnsavedIndex;
     private string _saveState = "Saved";
     private JsonSyntaxColorizer? _jsonColorizer;
+    private FoldingManager? _jsonFoldingManager;
+    private readonly JsonFoldingStrategy _jsonFoldingStrategy = new();
     private int _editVersion;
     private int _selectionRequestId;
     private readonly SemaphoreSlim _selectionSemaphore = new(1, 1);
@@ -66,10 +70,15 @@ public partial class MainWindow : Window
 
         Loaded += MainWindow_Loaded;
         Closing += MainWindow_Closing;
+        Closed += (_, _) => _linkedPowerShell.Dispose();
         PreviewKeyDown += MainWindow_PreviewKeyDown;
         Editor.PreviewMouseWheel += Editor_PreviewMouseWheel;
         Editor.TextArea.Caret.PositionChanged += (_, _) => UpdateStatus();
-        Editor.TextArea.SelectionChanged += (_, _) => UpdateJsonState();
+        Editor.TextArea.SelectionChanged += (_, _) =>
+        {
+            UpdateJsonState();
+            UpdateLinkedPowerShellState();
+        };
     }
 
     private void ApplyEditorDarkTheme()
@@ -722,6 +731,7 @@ public partial class MainWindow : Window
     private void Editor_ContextMenuOpening(object sender, ContextMenuEventArgs e)
     {
         UpdateJsonState();
+        UpdateLinkedPowerShellState();
     }
 
     private void FormatJsonSelectionOrDocument()
@@ -839,10 +849,12 @@ public partial class MainWindow : Window
         if (Editor.Text.Length <= JsonHighlightMaxLength && IsFullDocumentJson())
         {
             EnableJsonHighlighting();
+            EnableJsonFolding();
             return;
         }
 
         DisableJsonHighlighting();
+        DisableJsonFolding();
     }
 
     private bool IsFullDocumentJson()
@@ -876,6 +888,22 @@ public partial class MainWindow : Window
         Editor.TextArea.TextView.Redraw();
     }
 
+    private void EnableJsonFolding()
+    {
+        _jsonFoldingManager ??= FoldingManager.Install(Editor.TextArea);
+        _jsonFoldingStrategy.UpdateFoldings(_jsonFoldingManager, Editor.Document);
+    }
+
+    private void DisableJsonFolding()
+    {
+        if (_jsonFoldingManager is null)
+        {
+            return;
+        }
+
+        _jsonFoldingManager.Clear();
+    }
+
     private static string CreateSafeFileName(string title)
     {
         var fallback = string.IsNullOrWhiteSpace(title) ? "json" : title.Trim();
@@ -887,6 +915,138 @@ public partial class MainWindow : Window
     private static void ShowJsonMessage(string message)
     {
         MessageBox.Show(message, "Simple Notepad JSON", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+
+    private async void SendToPowerShellMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        await SendSelectedCommandToPowerShellAsync(LinkedPowerShellTarget.Normal);
+    }
+
+    private async void SendToAdminPowerShellMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        await SendSelectedCommandToPowerShellAsync(LinkedPowerShellTarget.Admin);
+    }
+
+    private void RestartNormalPowerShellMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        RestartLinkedPowerShell(LinkedPowerShellTarget.Normal);
+    }
+
+    private void RestartAdminPowerShellMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        RestartLinkedPowerShell(LinkedPowerShellTarget.Admin);
+    }
+
+    private void StopNormalPowerShellMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        StopLinkedPowerShell(LinkedPowerShellTarget.Normal);
+    }
+
+    private void StopAdminPowerShellMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        StopLinkedPowerShell(LinkedPowerShellTarget.Admin);
+    }
+
+    private async Task SendSelectedCommandToPowerShellAsync(LinkedPowerShellTarget target)
+    {
+        var command = Editor.SelectedText;
+        if (string.IsNullOrWhiteSpace(command))
+        {
+            ShowLinkedPowerShellMessage("Select command text before sending it to linked PowerShell.");
+            return;
+        }
+
+        var isAdmin = target == LinkedPowerShellTarget.Admin;
+        var willStartNewShell = !_linkedPowerShell.IsRunning(target);
+        var preview = $"""
+Send the selected command to linked PowerShell?
+
+Target shell: {_linkedPowerShell.GetSessionDescription(target)}
+Elevation: {(isAdmin ? "Admin (UAC required)" : "Normal")}
+Session: {_currentSession?.Title ?? "No session"} ({_currentSession?.Id ?? "none"})
+Action: {(isAdmin ? "Start a new elevated PowerShell and run immediately" : willStartNewShell ? "Start linked shell and run immediately" : "Run immediately in existing linked shell")}
+
+Command:
+{command}
+""";
+
+        var result = MessageBox.Show(
+            preview,
+            "Send to linked PowerShell",
+            MessageBoxButton.YesNo,
+            isAdmin ? MessageBoxImage.Warning : MessageBoxImage.Question);
+
+        if (result != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        try
+        {
+            await _linkedPowerShell.SendCommandAsync(target, command);
+            UpdateLinkedPowerShellState();
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidOperationException or Win32Exception)
+        {
+            ShowLinkedPowerShellMessage($"Simple Notepad could not send the command to linked PowerShell.\n\n{exception.Message}");
+            UpdateLinkedPowerShellState();
+        }
+    }
+
+    private void RestartLinkedPowerShell(LinkedPowerShellTarget target)
+    {
+        var result = MessageBox.Show(
+            $"Restart {_linkedPowerShell.GetSessionDescription(target)}?",
+            "Restart linked PowerShell",
+            MessageBoxButton.YesNo,
+            target == LinkedPowerShellTarget.Admin ? MessageBoxImage.Warning : MessageBoxImage.Question);
+
+        if (result != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        try
+        {
+            _linkedPowerShell.Restart(target);
+            UpdateLinkedPowerShellState();
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidOperationException or Win32Exception)
+        {
+            ShowLinkedPowerShellMessage($"Simple Notepad could not restart linked PowerShell.\n\n{exception.Message}");
+            UpdateLinkedPowerShellState();
+        }
+    }
+
+    private void StopLinkedPowerShell(LinkedPowerShellTarget target)
+    {
+        try
+        {
+            _linkedPowerShell.Stop(target);
+            UpdateLinkedPowerShellState();
+        }
+        catch (InvalidOperationException exception)
+        {
+            ShowLinkedPowerShellMessage(exception.Message);
+            UpdateLinkedPowerShellState();
+        }
+    }
+
+    private void UpdateLinkedPowerShellState()
+    {
+        var hasSelection = !string.IsNullOrWhiteSpace(Editor.SelectedText);
+        SendToPowerShellMenuItem.IsEnabled = hasSelection;
+        SendToAdminPowerShellMenuItem.IsEnabled = hasSelection;
+        RestartNormalPowerShellMenuItem.IsEnabled = true;
+        RestartAdminPowerShellMenuItem.IsEnabled = !_linkedPowerShell.IsRunning(LinkedPowerShellTarget.Admin);
+        StopNormalPowerShellMenuItem.IsEnabled = _linkedPowerShell.IsRunning(LinkedPowerShellTarget.Normal);
+        StopAdminPowerShellMenuItem.IsEnabled = _linkedPowerShell.IsRunning(LinkedPowerShellTarget.Admin);
+        LinkedPowerShellStatusText.Text = _linkedPowerShell.GetStatus();
+    }
+
+    private static void ShowLinkedPowerShellMessage(string message)
+    {
+        MessageBox.Show(message, "Simple Notepad Linked PowerShell", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
     private void WordWrapButton_Click(object sender, RoutedEventArgs e)
@@ -1512,6 +1672,90 @@ public partial class MainWindow : Window
             var brush = new SolidColorBrush(Color.FromRgb(red, green, blue));
             brush.Freeze();
             return brush;
+        }
+    }
+
+    private sealed class JsonFoldingStrategy
+    {
+        public void UpdateFoldings(FoldingManager manager, TextDocument document)
+        {
+            var foldings = CreateNewFoldings(document);
+            manager.UpdateFoldings(foldings.OrderBy(folding => folding.StartOffset), firstErrorOffset: -1);
+        }
+
+        private static IEnumerable<NewFolding> CreateNewFoldings(TextDocument document)
+        {
+            var text = document.Text;
+            var stack = new Stack<(char Opening, int Offset)>();
+            var inString = false;
+            var escaped = false;
+
+            for (var index = 0; index < text.Length; index++)
+            {
+                var character = text[index];
+                if (inString)
+                {
+                    if (escaped)
+                    {
+                        escaped = false;
+                        continue;
+                    }
+
+                    if (character == '\\')
+                    {
+                        escaped = true;
+                        continue;
+                    }
+
+                    if (character == '"')
+                    {
+                        inString = false;
+                    }
+
+                    continue;
+                }
+
+                if (character == '"')
+                {
+                    inString = true;
+                    continue;
+                }
+
+                if (character is '{' or '[')
+                {
+                    stack.Push((character, index));
+                    continue;
+                }
+
+                if (character is not ('}' or ']') || stack.Count == 0)
+                {
+                    continue;
+                }
+
+                var opening = stack.Pop();
+                if (!IsMatchingJsonPair(opening.Opening, character))
+                {
+                    continue;
+                }
+
+                var startLine = document.GetLineByOffset(opening.Offset).LineNumber;
+                var endOffset = index + 1;
+                var endLine = document.GetLineByOffset(index).LineNumber;
+                if (startLine == endLine)
+                {
+                    continue;
+                }
+
+                yield return new NewFolding(opening.Offset, endOffset)
+                {
+                    Name = opening.Opening == '{' ? "{...}" : "[...]"
+                };
+            }
+        }
+
+        private static bool IsMatchingJsonPair(char opening, char closing)
+        {
+            return (opening == '{' && closing == '}') || (opening == '[' && closing == ']');
         }
     }
 

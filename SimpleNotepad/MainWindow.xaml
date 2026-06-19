@@ -354,6 +354,29 @@
                                        TextChanged="Editor_TextChanged">
                     <avalonEdit:TextEditor.ContextMenu>
                         <ContextMenu>
+                            <MenuItem x:Name="LinkedPowerShellMenuItem"
+                                      Header="Send to Linked PowerShell">
+                                <MenuItem x:Name="SendToPowerShellMenuItem"
+                                          Header="Send to PowerShell"
+                                          Click="SendToPowerShellMenuItem_Click" />
+                                <MenuItem x:Name="SendToAdminPowerShellMenuItem"
+                                          Header="Send to PowerShell as Admin"
+                                          Click="SendToAdminPowerShellMenuItem_Click" />
+                                <Separator />
+                                <MenuItem x:Name="RestartNormalPowerShellMenuItem"
+                                          Header="Restart Normal PowerShell"
+                                          Click="RestartNormalPowerShellMenuItem_Click" />
+                                <MenuItem x:Name="RestartAdminPowerShellMenuItem"
+                                          Header="Restart Admin PowerShell"
+                                          Click="RestartAdminPowerShellMenuItem_Click" />
+                                <MenuItem x:Name="StopNormalPowerShellMenuItem"
+                                          Header="Stop Normal PowerShell"
+                                          Click="StopNormalPowerShellMenuItem_Click" />
+                                <MenuItem x:Name="StopAdminPowerShellMenuItem"
+                                          Header="Stop Admin PowerShell"
+                                          Click="StopAdminPowerShellMenuItem_Click" />
+                            </MenuItem>
+                            <Separator />
                             <MenuItem x:Name="FormatJsonMenuItem"
                                       Header="Format JSON"
                                       Click="FormatJsonButton_Click" />
@@ -373,9 +396,15 @@
                     Background="#2D2D30"
                     BorderBrush="#3C3C3C"
                     BorderThickness="0,1,0,0">
-                <TextBlock x:Name="StatusText"
-                           Text="Ln 1, Col 1 | 0 chars | Saved"
-                           Foreground="#9DA5B4" />
+                <DockPanel LastChildFill="True">
+                    <TextBlock x:Name="LinkedPowerShellStatusText"
+                               DockPanel.Dock="Right"
+                               Text="PS: normal disconnected, admin disconnected"
+                               Foreground="#9DA5B4" />
+                    <TextBlock x:Name="StatusText"
+                               Text="Ln 1, Col 1 | 0 chars | Saved"
+                               Foreground="#9DA5B4" />
+                </DockPanel>
             </Border>
         </Grid>
     </Grid>
