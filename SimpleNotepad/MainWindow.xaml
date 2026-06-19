@@ -11,7 +11,125 @@
         Width="1100"
         MinHeight="480"
         MinWidth="760">
-    <Grid Background="#F6F7F9">
+    <Window.Resources>
+        <SolidColorBrush x:Key="MenuItem.Highlight.Background" Color="#094771" />
+        <SolidColorBrush x:Key="MenuItem.Highlight.Border" Color="#094771" />
+
+        <!-- Dark Button style -->
+        <Style TargetType="Button">
+            <Setter Property="Background" Value="#3C3C3C" />
+            <Setter Property="Foreground" Value="#D4D4D4" />
+            <Setter Property="BorderBrush" Value="#555555" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="8,4" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="3"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#505050" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter Property="Background" Value="#2A2A2A" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Dark TextBox style -->
+        <Style TargetType="TextBox">
+            <Setter Property="Background" Value="#3C3C3C" />
+            <Setter Property="Foreground" Value="#D4D4D4" />
+            <Setter Property="BorderBrush" Value="#555555" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CaretBrush" Value="#D4D4D4" />
+            <Setter Property="SelectionBrush" Value="#264F78" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TextBox">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="3">
+                            <ScrollViewer x:Name="PART_ContentHost"
+                                          Margin="{TemplateBinding Padding}" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsFocused" Value="True">
+                                <Setter Property="BorderBrush" Value="#007ACC" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Dark ListBoxItem style -->
+        <Style TargetType="ListBoxItem">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="#D4D4D4" />
+            <Setter Property="Padding" Value="4,2" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border x:Name="ItemBorder"
+                                Background="{TemplateBinding Background}"
+                                BorderThickness="0"
+                                CornerRadius="4"
+                                Margin="0,1">
+                            <ContentPresenter Margin="{TemplateBinding Padding}" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ItemBorder" Property="Background" Value="#2A2D2E" />
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="ItemBorder" Property="Background" Value="#094771" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Dark ContextMenu style -->
+        <Style TargetType="ContextMenu">
+            <Setter Property="Background" Value="#2D2D30" />
+            <Setter Property="BorderBrush" Value="#3C3C3C" />
+            <Setter Property="Foreground" Value="#D4D4D4" />
+        </Style>
+
+        <!-- Dark MenuItem style -->
+        <Style TargetType="MenuItem">
+            <Setter Property="Foreground" Value="#D4D4D4" />
+            <Setter Property="Background" Value="#2D2D30" />
+            <Style.Triggers>
+                <Trigger Property="IsHighlighted" Value="True">
+                    <Setter Property="Background" Value="{StaticResource MenuItem.Highlight.Background}" />
+                    <Setter Property="BorderBrush" Value="{StaticResource MenuItem.Highlight.Border}" />
+                    <Setter Property="Foreground" Value="#FFFFFF" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- Dark Separator style -->
+        <Style TargetType="Separator">
+            <Setter Property="Background" Value="#3C3C3C" />
+        </Style>
+    </Window.Resources>
+
+    <Grid Background="#1E1E1E">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="280" MinWidth="220" />
             <ColumnDefinition Width="5" />
@@ -19,8 +137,8 @@
         </Grid.ColumnDefinitions>
 
         <Border Grid.Column="0"
-                Background="#FFFFFF"
-                BorderBrush="#D7DCE2"
+                Background="#252526"
+                BorderBrush="#3C3C3C"
                 BorderThickness="0,0,1,0">
             <Grid Margin="14">
                 <Grid.RowDefinitions>
@@ -33,7 +151,7 @@
                 <TextBlock Text="Sessions"
                            FontSize="20"
                            FontWeight="SemiBold"
-                           Foreground="#1F2937" />
+                           Foreground="#D4D4D4" />
 
                 <Button x:Name="NewSessionButton"
                         Grid.Row="1"
@@ -70,20 +188,20 @@
                             <StackPanel Margin="4">
                                 <TextBlock Text="{Binding Title}"
                                            FontWeight="SemiBold"
-                                           Foreground="#111827"
+                                           Foreground="#D4D4D4"
                                            TextTrimming="CharacterEllipsis" />
                                 <TextBlock Margin="0,3,0,0"
                                            Text="{Binding ExpiryText}"
                                            FontSize="12"
-                                           Foreground="#6B7280" />
+                                           Foreground="#9DA5B4" />
                                 <TextBlock Margin="0,3,0,0"
                                            Text="{Binding LastModifiedText}"
                                            FontSize="12"
-                                           Foreground="#6B7280" />
+                                           Foreground="#9DA5B4" />
                                 <TextBlock Margin="0,3,0,0"
                                            Text="{Binding Preview}"
                                            FontSize="12"
-                                           Foreground="#6B7280"
+                                           Foreground="#9DA5B4"
                                            TextTrimming="CharacterEllipsis" />
                             </StackPanel>
                         </DataTemplate>
@@ -94,7 +212,7 @@
 
         <GridSplitter Grid.Column="1"
                       HorizontalAlignment="Stretch"
-                      Background="#D7DCE2" />
+                      Background="#3C3C3C" />
 
         <Grid Grid.Column="2">
             <Grid.RowDefinitions>
@@ -106,15 +224,15 @@
 
             <Border Grid.Row="0"
                     Padding="16,12"
-                    Background="#FFFFFF"
-                    BorderBrush="#D7DCE2"
+                    Background="#2D2D30"
+                    BorderBrush="#3C3C3C"
                     BorderThickness="0,0,0,1">
                 <DockPanel LastChildFill="True">
                     <TextBox x:Name="SessionTitleBox"
                              Text="Untitled"
                                FontSize="18"
                                FontWeight="SemiBold"
-                               Foreground="#111827"
+                               Foreground="#D4D4D4"
                              BorderThickness="0"
                              Background="Transparent"
                              VerticalAlignment="Center"
@@ -122,24 +240,26 @@
                     <TextBlock x:Name="SaveStateText"
                                DockPanel.Dock="Right"
                                Text="Saved"
-                               Foreground="#059669"
+                               Foreground="#4EC9B0"
                                VerticalAlignment="Center" />
                 </DockPanel>
             </Border>
 
             <Border Grid.Row="1"
                     Padding="10"
-                    Background="#EEF2F7"
-                    BorderBrush="#D7DCE2"
+                    Background="#2D2D30"
+                    BorderBrush="#3C3C3C"
                     BorderThickness="0,0,0,1"
                     Visibility="Collapsed">
                 <DockPanel LastChildFill="False">
                     <TextBlock Text="Find"
+                               Foreground="#D4D4D4"
                                VerticalAlignment="Center"
                                Margin="0,0,6,0" />
                     <TextBox Width="180"
                              Margin="0,0,10,0" />
                     <TextBlock Text="Replace"
+                               Foreground="#D4D4D4"
                                VerticalAlignment="Center"
                                Margin="0,0,6,0" />
                     <TextBox Width="180"
@@ -158,8 +278,8 @@
 
             <Border Grid.Row="2"
                     Margin="16"
-                    Background="#FFFFFF"
-                    BorderBrush="#D7DCE2"
+                    Background="#1E1E1E"
+                    BorderBrush="#3C3C3C"
                     BorderThickness="1">
                 <avalonEdit:TextEditor x:Name="Editor"
                                        ShowLineNumbers="True"
@@ -167,17 +287,19 @@
                                        FontSize="14"
                                        Padding="8"
                                        WordWrap="True"
+                                       Background="#1E1E1E"
+                                       Foreground="#D4D4D4"
                                        TextChanged="Editor_TextChanged" />
             </Border>
 
             <Border Grid.Row="3"
                     Padding="12,7"
-                    Background="#FFFFFF"
-                    BorderBrush="#D7DCE2"
+                    Background="#2D2D30"
+                    BorderBrush="#3C3C3C"
                     BorderThickness="0,1,0,0">
                 <TextBlock x:Name="StatusText"
                            Text="Ln 1, Col 1 | 0 chars | Saved"
-                           Foreground="#4B5563" />
+                           Foreground="#9DA5B4" />
             </Border>
         </Grid>
     </Grid>

@@ -42,10 +42,25 @@ public partial class MainWindow : Window
         _sessionsView.Filter = FilterSession;
         SessionsList.ItemsSource = _sessionsView;
 
+        ApplyEditorDarkTheme();
+
         Loaded += MainWindow_Loaded;
         Closing += MainWindow_Closing;
         PreviewKeyDown += MainWindow_PreviewKeyDown;
         Editor.TextArea.Caret.PositionChanged += (_, _) => UpdateStatus();
+    }
+
+    private void ApplyEditorDarkTheme()
+    {
+        var bgColor = Color.FromRgb(0x1E, 0x1E, 0x1E);
+        var fgColor = Color.FromRgb(0xD4, 0xD4, 0xD4);
+
+        Editor.Background = new SolidColorBrush(bgColor);
+        Editor.Foreground = new SolidColorBrush(fgColor);
+        Editor.TextArea.Background = new SolidColorBrush(bgColor);
+        Editor.TextArea.Foreground = new SolidColorBrush(fgColor);
+        Editor.TextArea.TextView.LinkTextForegroundBrush = new SolidColorBrush(Color.FromRgb(0x56, 0x9C, 0xD6));
+        Editor.LineNumbersForeground = new SolidColorBrush(Color.FromRgb(0x85, 0x85, 0x85));
     }
 
     private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
