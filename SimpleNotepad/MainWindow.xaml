@@ -237,6 +237,24 @@
                     <StackPanel DockPanel.Dock="Right"
                                Orientation="Horizontal"
                                VerticalAlignment="Center">
+                        <Button x:Name="FormatJsonButton"
+                               Margin="0,0,8,0"
+                               Padding="8,3"
+                               Content="Format JSON"
+                               ToolTip="Format selected JSON or the full note (Ctrl+Shift+F)"
+                               Click="FormatJsonButton_Click" />
+                        <Button x:Name="MinifyJsonButton"
+                               Margin="0,0,8,0"
+                               Padding="8,3"
+                               Content="Minify"
+                               ToolTip="Minify selected JSON or the full note"
+                               Click="MinifyJsonButton_Click" />
+                        <Button x:Name="OpenJsonInVsCodeButton"
+                               Margin="0,0,12,0"
+                               Padding="8,3"
+                               Content="VS Code"
+                               ToolTip="Open selected JSON or the full note in Visual Studio Code"
+                               Click="OpenJsonInVsCodeButton_Click" />
                         <Button x:Name="WordWrapButton"
                                Margin="0,0,12,0"
                                Padding="8,3"
@@ -332,7 +350,22 @@
                                        WordWrap="True"
                                        Background="#1E1E1E"
                                        Foreground="#D4D4D4"
-                                       TextChanged="Editor_TextChanged" />
+                                       ContextMenuOpening="Editor_ContextMenuOpening"
+                                       TextChanged="Editor_TextChanged">
+                    <avalonEdit:TextEditor.ContextMenu>
+                        <ContextMenu>
+                            <MenuItem x:Name="FormatJsonMenuItem"
+                                      Header="Format JSON"
+                                      Click="FormatJsonButton_Click" />
+                            <MenuItem x:Name="MinifyJsonMenuItem"
+                                      Header="Minify JSON"
+                                      Click="MinifyJsonButton_Click" />
+                            <MenuItem x:Name="OpenJsonInVsCodeMenuItem"
+                                      Header="Open JSON in VS Code"
+                                      Click="OpenJsonInVsCodeButton_Click" />
+                        </ContextMenu>
+                    </avalonEdit:TextEditor.ContextMenu>
+                </avalonEdit:TextEditor>
             </Border>
 
             <Border Grid.Row="3"

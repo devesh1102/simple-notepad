@@ -1,12 +1,16 @@
 ﻿using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.IO;
 using System.Text;
+using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
 using System.ComponentModel;
 using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
+using ICSharpCode.AvalonEdit.Document;
+using ICSharpCode.AvalonEdit.Rendering;
 using Microsoft.Win32;
 using SimpleNotepad.Models;
 using SimpleNotepad.Services;
@@ -33,6 +37,7 @@ public partial class MainWindow : Window
     private bool _hasUnsavedContent;
     private bool _hasUnsavedIndex;
     private string _saveState = "Saved";
+    private JsonSyntaxColorizer? _jsonColorizer;
     private int _editVersion;
     private int _selectionRequestId;
     private readonly SemaphoreSlim _selectionSemaphore = new(1, 1);
@@ -41,7 +46,13 @@ public partial class MainWindow : Window
     private const double MinimumEditorFontSize = 8;
     private const double MaximumEditorFontSize = 48;
     private const double EditorFontSizeStep = 1;
+    private const int JsonHighlightMaxLength = 200_000;
+    private const int JsonAutoValidationMaxLength = 200_000;
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
+    private static readonly JsonSerializerOptions PrettyJsonOptions = new()
+    {
+        WriteIndented = true
+    };
 
     public MainWindow()
     {
@@ -51,12 +62,14 @@ public partial class MainWindow : Window
         SessionsList.ItemsSource = _sessionsView;
 
         ApplyEditorDarkTheme();
+        UpdateJsonState();
 
         Loaded += MainWindow_Loaded;
         Closing += MainWindow_Closing;
         PreviewKeyDown += MainWindow_PreviewKeyDown;
         Editor.PreviewMouseWheel += Editor_PreviewMouseWheel;
         Editor.TextArea.Caret.PositionChanged += (_, _) => UpdateStatus();
+        Editor.TextArea.SelectionChanged += (_, _) => UpdateJsonState();
     }
 
     private void ApplyEditorDarkTheme()
@@ -328,6 +341,7 @@ public partial class MainWindow : Window
         {
             _isLoadingSession = false;
             UpdateFindMatchCount();
+            UpdateJsonState();
         }
     }
 
@@ -435,6 +449,7 @@ public partial class MainWindow : Window
         ScheduleAutosave();
         UpdateStatus();
         UpdateFindMatchCount();
+        UpdateJsonState();
     }
 
     private void SessionTitleBox_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
@@ -549,6 +564,10 @@ public partial class MainWindow : Window
 
         switch (e.Key)
         {
+            case Key.F when hasShift:
+                FormatJsonSelectionOrDocument();
+                return;
+
             case Key.F:
                 OpenFindReplaceBar();
                 return;
@@ -683,6 +702,191 @@ public partial class MainWindow : Window
             MarkSaveError();
             ShowError("Simple Notepad could not save the file.", exception);
         }
+    }
+
+    private void FormatJsonButton_Click(object sender, RoutedEventArgs e)
+    {
+        FormatJsonSelectionOrDocument();
+    }
+
+    private void MinifyJsonButton_Click(object sender, RoutedEventArgs e)
+    {
+        MinifyJsonSelectionOrDocument();
+    }
+
+    private async void OpenJsonInVsCodeButton_Click(object sender, RoutedEventArgs e)
+    {
+        await OpenJsonInVsCodeAsync();
+    }
+
+    private void Editor_ContextMenuOpening(object sender, ContextMenuEventArgs e)
+    {
+        UpdateJsonState();
+    }
+
+    private void FormatJsonSelectionOrDocument()
+    {
+        ReplaceJsonSelectionOrDocument(writeIndented: true);
+    }
+
+    private void MinifyJsonSelectionOrDocument()
+    {
+        ReplaceJsonSelectionOrDocument(writeIndented: false);
+    }
+
+    private void ReplaceJsonSelectionOrDocument(bool writeIndented)
+    {
+        var target = GetJsonTarget();
+        if (string.IsNullOrWhiteSpace(target.Text))
+        {
+            ShowJsonMessage("There is no JSON content to process.");
+            return;
+        }
+
+        if (!TryFormatJson(target.Text, writeIndented, out var formattedJson, out var errorMessage))
+        {
+            ShowJsonMessage($"The selected content is not valid JSON.\n\n{errorMessage}");
+            return;
+        }
+
+        Editor.Document.Replace(target.Start, target.Length, formattedJson);
+        Editor.Select(target.Start, formattedJson.Length);
+        UpdateJsonState();
+    }
+
+    private async Task OpenJsonInVsCodeAsync()
+    {
+        var target = GetJsonTarget();
+        if (string.IsNullOrWhiteSpace(target.Text))
+        {
+            ShowJsonMessage("There is no JSON content to open in VS Code.");
+            return;
+        }
+
+        if (!TryFormatJson(target.Text, writeIndented: true, out var formattedJson, out var errorMessage))
+        {
+            ShowJsonMessage($"The selected content is not valid JSON.\n\n{errorMessage}");
+            return;
+        }
+
+        try
+        {
+            var tempDirectory = Path.Combine(Path.GetTempPath(), "SimpleNotepad");
+            Directory.CreateDirectory(tempDirectory);
+            var tempPath = Path.Combine(tempDirectory, $"{CreateSafeFileName(SessionTitleBox.Text)}-{Guid.NewGuid():N}.json");
+            await File.WriteAllTextAsync(tempPath, formattedJson, StrictUtf8);
+
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = "code",
+                Arguments = $"\"{tempPath}\"",
+                UseShellExecute = true
+            };
+
+            if (Process.Start(startInfo) is null)
+            {
+                throw new InvalidOperationException("Visual Studio Code did not start.");
+            }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or Win32Exception or InvalidOperationException)
+        {
+            ShowJsonMessage($"Simple Notepad could not open JSON in VS Code. Make sure the 'code' command is installed and available in PATH.\n\n{exception.Message}");
+        }
+    }
+
+    private (string Text, int Start, int Length) GetJsonTarget()
+    {
+        if (!string.IsNullOrWhiteSpace(Editor.SelectedText))
+        {
+            return (Editor.SelectedText, Editor.SelectionStart, Editor.SelectionLength);
+        }
+
+        return (Editor.Text, 0, Editor.Text.Length);
+    }
+
+    private static bool TryFormatJson(string json, bool writeIndented, out string formattedJson, out string errorMessage)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            formattedJson = JsonSerializer.Serialize(document.RootElement, writeIndented ? PrettyJsonOptions : JsonSerializerOptions.Default);
+            errorMessage = string.Empty;
+            return true;
+        }
+        catch (JsonException exception)
+        {
+            formattedJson = string.Empty;
+            errorMessage = exception.Message;
+            return false;
+        }
+    }
+
+    private void UpdateJsonState()
+    {
+        var target = GetJsonTarget();
+        var hasContent = !string.IsNullOrWhiteSpace(target.Text);
+        var canAutoValidate = hasContent && target.Text.Length <= JsonAutoValidationMaxLength;
+        var isValidJson = canAutoValidate && TryFormatJson(target.Text, writeIndented: false, out _, out _);
+        var shouldEnableActions = isValidJson || (hasContent && target.Text.Length > JsonAutoValidationMaxLength);
+
+        FormatJsonButton.IsEnabled = shouldEnableActions;
+        MinifyJsonButton.IsEnabled = shouldEnableActions;
+        OpenJsonInVsCodeButton.IsEnabled = shouldEnableActions;
+        FormatJsonMenuItem.IsEnabled = shouldEnableActions;
+        MinifyJsonMenuItem.IsEnabled = shouldEnableActions;
+        OpenJsonInVsCodeMenuItem.IsEnabled = shouldEnableActions;
+
+        if (Editor.Text.Length <= JsonHighlightMaxLength && IsFullDocumentJson())
+        {
+            EnableJsonHighlighting();
+            return;
+        }
+
+        DisableJsonHighlighting();
+    }
+
+    private bool IsFullDocumentJson()
+    {
+        return !string.IsNullOrWhiteSpace(Editor.Text) &&
+               Editor.Text.Length <= JsonHighlightMaxLength &&
+               TryFormatJson(Editor.Text, writeIndented: false, out _, out _);
+    }
+
+    private void EnableJsonHighlighting()
+    {
+        if (_jsonColorizer is not null)
+        {
+            return;
+        }
+
+        _jsonColorizer = new JsonSyntaxColorizer();
+        Editor.TextArea.TextView.LineTransformers.Add(_jsonColorizer);
+        Editor.TextArea.TextView.Redraw();
+    }
+
+    private void DisableJsonHighlighting()
+    {
+        if (_jsonColorizer is null)
+        {
+            return;
+        }
+
+        Editor.TextArea.TextView.LineTransformers.Remove(_jsonColorizer);
+        _jsonColorizer = null;
+        Editor.TextArea.TextView.Redraw();
+    }
+
+    private static string CreateSafeFileName(string title)
+    {
+        var fallback = string.IsNullOrWhiteSpace(title) ? "json" : title.Trim();
+        var invalidCharacters = Path.GetInvalidFileNameChars();
+        var safeName = new string(fallback.Select(character => invalidCharacters.Contains(character) ? '-' : character).ToArray());
+        return string.IsNullOrWhiteSpace(safeName) ? "json" : safeName;
+    }
+
+    private static void ShowJsonMessage(string message)
+    {
+        MessageBox.Show(message, "Simple Notepad JSON", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
     private void WordWrapButton_Click(object sender, RoutedEventArgs e)
@@ -1182,6 +1386,133 @@ public partial class MainWindow : Window
             "Simple Notepad",
             MessageBoxButton.OK,
             MessageBoxImage.Error);
+    }
+
+    private sealed class JsonSyntaxColorizer : DocumentColorizingTransformer
+    {
+        private static readonly SolidColorBrush PropertyBrush = CreateFrozenBrush(0x9C, 0xDC, 0xFE);
+        private static readonly SolidColorBrush StringBrush = CreateFrozenBrush(0xCE, 0x91, 0x78);
+        private static readonly SolidColorBrush NumberBrush = CreateFrozenBrush(0xB5, 0xCE, 0xA8);
+        private static readonly SolidColorBrush KeywordBrush = CreateFrozenBrush(0x56, 0x9C, 0xD6);
+
+        protected override void ColorizeLine(DocumentLine line)
+        {
+            var lineText = CurrentContext.Document.GetText(line);
+            var index = 0;
+
+            while (index < lineText.Length)
+            {
+                var character = lineText[index];
+                if (character == '"')
+                {
+                    var endIndex = FindStringEnd(lineText, index);
+                    var brush = IsPropertyName(lineText, endIndex) ? PropertyBrush : StringBrush;
+                    ApplyBrush(line.Offset + index, line.Offset + endIndex + 1, brush);
+                    index = endIndex + 1;
+                    continue;
+                }
+
+                if (character == '-' || char.IsDigit(character))
+                {
+                    var endIndex = FindNumberEnd(lineText, index);
+                    ApplyBrush(line.Offset + index, line.Offset + endIndex, NumberBrush);
+                    index = endIndex;
+                    continue;
+                }
+
+                if (StartsWithKeyword(lineText, index, "true", out var trueEnd) ||
+                    StartsWithKeyword(lineText, index, "false", out trueEnd) ||
+                    StartsWithKeyword(lineText, index, "null", out trueEnd))
+                {
+                    ApplyBrush(line.Offset + index, line.Offset + trueEnd, KeywordBrush);
+                    index = trueEnd;
+                    continue;
+                }
+
+                index++;
+            }
+        }
+
+        private static int FindStringEnd(string text, int start)
+        {
+            var escaped = false;
+            for (var index = start + 1; index < text.Length; index++)
+            {
+                if (escaped)
+                {
+                    escaped = false;
+                    continue;
+                }
+
+                if (text[index] == '\\')
+                {
+                    escaped = true;
+                    continue;
+                }
+
+                if (text[index] == '"')
+                {
+                    return index;
+                }
+            }
+
+            return text.Length - 1;
+        }
+
+        private static int FindNumberEnd(string text, int start)
+        {
+            var index = start;
+            while (index < text.Length && (char.IsDigit(text[index]) || text[index] is '-' or '+' or '.' or 'e' or 'E'))
+            {
+                index++;
+            }
+
+            return index;
+        }
+
+        private static bool IsPropertyName(string text, int stringEnd)
+        {
+            for (var index = stringEnd + 1; index < text.Length; index++)
+            {
+                if (char.IsWhiteSpace(text[index]))
+                {
+                    continue;
+                }
+
+                return text[index] == ':';
+            }
+
+            return false;
+        }
+
+        private static bool StartsWithKeyword(string text, int start, string keyword, out int end)
+        {
+            end = start + keyword.Length;
+            if (end > text.Length || !text.AsSpan(start, keyword.Length).SequenceEqual(keyword))
+            {
+                return false;
+            }
+
+            if ((start > 0 && char.IsLetterOrDigit(text[start - 1])) ||
+                (end < text.Length && char.IsLetterOrDigit(text[end])))
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        private void ApplyBrush(int startOffset, int endOffset, Brush brush)
+        {
+            ChangeLinePart(startOffset, endOffset, element => element.TextRunProperties.SetForegroundBrush(brush));
+        }
+
+        private static SolidColorBrush CreateFrozenBrush(byte red, byte green, byte blue)
+        {
+            var brush = new SolidColorBrush(Color.FromRgb(red, green, blue));
+            brush.Freeze();
+            return brush;
+        }
     }
 
     private static T? FindAncestor<T>(DependencyObject? current)
