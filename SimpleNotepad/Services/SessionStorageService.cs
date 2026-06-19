@@ -218,12 +218,9 @@ public sealed class SessionStorageService
 
             if (File.Exists(path))
             {
-                if (File.Exists(backupPath))
-                {
-                    File.Delete(backupPath);
-                }
-
-                File.Replace(tempPath, path, backupPath, ignoreMetadataErrors: true);
+                var replacementBackupPath = $"{backupPath}.{Guid.NewGuid():N}.replace";
+                File.Replace(tempPath, path, replacementBackupPath, ignoreMetadataErrors: true);
+                PromoteReplacementBackup(replacementBackupPath, backupPath);
                 return;
             }
 
@@ -245,6 +242,26 @@ public sealed class SessionStorageService
         try
         {
             File.Delete(path);
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
+    }
+
+    private static void PromoteReplacementBackup(string replacementBackupPath, string backupPath)
+    {
+        try
+        {
+            if (File.Exists(backupPath))
+            {
+                File.Replace(replacementBackupPath, backupPath, null, ignoreMetadataErrors: true);
+                return;
+            }
+
+            File.Move(replacementBackupPath, backupPath);
         }
         catch (IOException)
         {
@@ -300,7 +317,16 @@ public sealed class SessionStorageService
 
         var quarantinePath = Path.Combine(directory, $"{Path.GetFileName(path)}.corrupt.{Guid.NewGuid():N}");
 
-        await Task.Run(() => File.Move(path, quarantinePath), cancellationToken);
+        try
+        {
+            await Task.Run(() => File.Move(path, quarantinePath), CancellationToken.None);
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
     }
 
     private static string GetBackupPath(string path) => $"{path}.bak";
