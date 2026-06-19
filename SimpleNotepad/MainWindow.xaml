@@ -1,6 +1,7 @@
 ﻿<Window x:Class="SimpleNotepad.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:avalonEdit="http://icsharpcode.net/sharpdevelop/avalonedit"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:SimpleNotepad"
@@ -10,7 +11,163 @@
         Width="1100"
         MinHeight="480"
         MinWidth="760">
-    <Grid>
+    <Grid Background="#F6F7F9">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="280" MinWidth="220" />
+            <ColumnDefinition Width="5" />
+            <ColumnDefinition Width="*" MinWidth="420" />
+        </Grid.ColumnDefinitions>
 
+        <Border Grid.Column="0"
+                Background="#FFFFFF"
+                BorderBrush="#D7DCE2"
+                BorderThickness="0,0,1,0">
+            <Grid Margin="14">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <TextBlock Text="Sessions"
+                           FontSize="20"
+                           FontWeight="SemiBold"
+                           Foreground="#1F2937" />
+
+                <Button Grid.Row="1"
+                        Margin="0,14,0,12"
+                        Padding="10,7"
+                        HorizontalContentAlignment="Left"
+                        Content="+ New Session" />
+
+                <TextBox Grid.Row="2"
+                         Margin="0,0,0,12"
+                         Padding="8,6"
+                         Text="Search sessions"
+                         Foreground="#6B7280" />
+
+                <ListBox Grid.Row="3"
+                         BorderThickness="0"
+                         Background="Transparent"
+                         SelectedIndex="0">
+                    <ListBoxItem Padding="8">
+                        <StackPanel>
+                            <TextBlock Text="API Debug Notes"
+                                       FontWeight="SemiBold"
+                                       Foreground="#111827" />
+                            <TextBlock Margin="0,3,0,0"
+                                       Text="expires in 6 days"
+                                       FontSize="12"
+                                       Foreground="#6B7280" />
+                            <TextBlock Margin="0,3,0,0"
+                                       Text="First request payload..."
+                                       FontSize="12"
+                                       Foreground="#6B7280"
+                                       TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
+                    </ListBoxItem>
+                    <ListBoxItem Padding="8">
+                        <StackPanel>
+                            <TextBlock Text="Meeting Notes"
+                                       FontWeight="SemiBold"
+                                       Foreground="#111827" />
+                            <TextBlock Margin="0,3,0,0"
+                                       Text="expires in 4 days"
+                                       FontSize="12"
+                                       Foreground="#6B7280" />
+                            <TextBlock Margin="0,3,0,0"
+                                       Text="Follow up on design..."
+                                       FontSize="12"
+                                       Foreground="#6B7280"
+                                       TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
+                    </ListBoxItem>
+                </ListBox>
+            </Grid>
+        </Border>
+
+        <GridSplitter Grid.Column="1"
+                      HorizontalAlignment="Stretch"
+                      Background="#D7DCE2" />
+
+        <Grid Grid.Column="2">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <Border Grid.Row="0"
+                    Padding="16,12"
+                    Background="#FFFFFF"
+                    BorderBrush="#D7DCE2"
+                    BorderThickness="0,0,0,1">
+                <DockPanel LastChildFill="True">
+                    <TextBlock Text="API Debug Notes"
+                               FontSize="18"
+                               FontWeight="SemiBold"
+                               Foreground="#111827"
+                               VerticalAlignment="Center" />
+                    <TextBlock DockPanel.Dock="Right"
+                               Text="Saved"
+                               Foreground="#059669"
+                               VerticalAlignment="Center" />
+                </DockPanel>
+            </Border>
+
+            <Border Grid.Row="1"
+                    Padding="10"
+                    Background="#EEF2F7"
+                    BorderBrush="#D7DCE2"
+                    BorderThickness="0,0,0,1"
+                    Visibility="Collapsed">
+                <DockPanel LastChildFill="False">
+                    <TextBlock Text="Find"
+                               VerticalAlignment="Center"
+                               Margin="0,0,6,0" />
+                    <TextBox Width="180"
+                             Margin="0,0,10,0" />
+                    <TextBlock Text="Replace"
+                               VerticalAlignment="Center"
+                               Margin="0,0,6,0" />
+                    <TextBox Width="180"
+                             Margin="0,0,10,0" />
+                    <Button Content="Prev"
+                            Margin="0,0,6,0" />
+                    <Button Content="Next"
+                            Margin="0,0,6,0" />
+                    <Button Content="Replace"
+                            Margin="0,0,6,0" />
+                    <Button Content="All"
+                            Margin="0,0,6,0" />
+                    <Button Content="x" />
+                </DockPanel>
+            </Border>
+
+            <Border Grid.Row="2"
+                    Margin="16"
+                    Background="#FFFFFF"
+                    BorderBrush="#D7DCE2"
+                    BorderThickness="1">
+                <avalonEdit:TextEditor x:Name="Editor"
+                                       ShowLineNumbers="True"
+                                       FontFamily="Consolas"
+                                       FontSize="14"
+                                       Padding="8"
+                                       WordWrap="True"
+                                       Text="Welcome to Simple Notepad." />
+            </Border>
+
+            <Border Grid.Row="3"
+                    Padding="12,7"
+                    Background="#FFFFFF"
+                    BorderBrush="#D7DCE2"
+                    BorderThickness="0,1,0,0">
+                <TextBlock Text="Ln 1, Col 1 | 27 chars | Saved"
+                           Foreground="#4B5563" />
+            </Border>
+        </Grid>
     </Grid>
 </Window>
