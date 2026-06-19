@@ -1,4 +1,5 @@
 using System.IO;
+using System.Text;
 using System.Text.Json;
 using SimpleNotepad.Models;
 
@@ -13,6 +14,8 @@ public sealed class AppSettingsService
     {
         WriteIndented = true
     };
+
+    private static readonly UTF8Encoding StrictUtf8 = new(false, true);
 
     private readonly string _settingsPath;
 
@@ -58,6 +61,28 @@ public sealed class AppSettingsService
 
         Directory.CreateDirectory(directory);
         var json = JsonSerializer.Serialize(settings, JsonOptions);
-        await File.WriteAllTextAsync(_settingsPath, json, cancellationToken);
+        var tempPath = Path.Combine(directory, $"{SettingsFileName}.{Guid.NewGuid():N}.tmp");
+
+        try
+        {
+            await File.WriteAllTextAsync(tempPath, json, StrictUtf8, cancellationToken);
+
+            if (File.Exists(_settingsPath))
+            {
+                File.Replace(tempPath, _settingsPath, null, ignoreMetadataErrors: true);
+                return;
+            }
+
+            File.Move(tempPath, _settingsPath);
+        }
+        catch
+        {
+            if (File.Exists(tempPath))
+            {
+                File.Delete(tempPath);
+            }
+
+            throw;
+        }
     }
 }

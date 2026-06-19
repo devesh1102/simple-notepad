@@ -54,6 +54,7 @@
                          Grid.Row="3"
                          BorderThickness="0"
                          Background="Transparent"
+                         PreviewMouseRightButtonDown="SessionsList_PreviewMouseRightButtonDown"
                          SelectionChanged="SessionsList_SelectionChanged">
                     <ListBox.ContextMenu>
                         <ContextMenu>

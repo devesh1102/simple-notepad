@@ -6,10 +6,12 @@ namespace SimpleNotepad;
 public partial class App : Application
 {
     private Mutex? _singleInstanceMutex;
+    private bool _ownsMutex;
 
     protected override void OnStartup(StartupEventArgs e)
     {
         _singleInstanceMutex = new Mutex(initiallyOwned: true, "SimpleNotepad.SingleInstance", out var isFirstInstance);
+        _ownsMutex = isFirstInstance;
 
         if (!isFirstInstance)
         {
@@ -22,7 +24,11 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
-        _singleInstanceMutex?.ReleaseMutex();
+        if (_ownsMutex)
+        {
+            _singleInstanceMutex?.ReleaseMutex();
+        }
+
         _singleInstanceMutex?.Dispose();
         base.OnExit(e);
     }

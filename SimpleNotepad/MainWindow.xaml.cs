@@ -1,7 +1,9 @@
 ﻿using System.Collections.ObjectModel;
 using System.Windows;
+using System.Windows.Controls;
 using System.ComponentModel;
 using System.Windows.Data;
+using System.Windows.Media;
 using SimpleNotepad.Models;
 using SimpleNotepad.Services;
 using SimpleNotepad.ViewModels;
@@ -18,6 +20,7 @@ public partial class MainWindow : Window
     private AppSettings _settings = new();
     private NoteSession? _currentSession;
     private bool _isLoadingSession;
+    private bool _isClosingAfterSave;
     private bool _hasUnsavedContent;
     private bool _hasUnsavedIndex;
 
@@ -41,15 +44,36 @@ public partial class MainWindow : Window
 
     private async void MainWindow_Closing(object? sender, CancelEventArgs e)
     {
-        await SaveCurrentSessionAsync();
-        await SaveIndexIfNeededAsync();
-        await _settingsService.SaveAsync(_settings);
+        if (_isClosingAfterSave)
+        {
+            return;
+        }
+
+        e.Cancel = true;
+
+        try
+        {
+            await SaveCurrentSessionAsync();
+            await SaveIndexIfNeededAsync();
+            await _settingsService.SaveAsync(_settings);
+            _isClosingAfterSave = true;
+            Close();
+        }
+        catch (Exception exception)
+        {
+            MessageBox.Show(
+                $"Simple Notepad could not save your latest changes:\n\n{exception.Message}",
+                "Save failed",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
     }
 
     private async Task LoadSessionsAsync()
     {
         var sessions = (await _sessionStorage.LoadIndexAsync())
-            .OrderByDescending(session => session.UpdatedAt)
+            .OrderByDescending(session => session.IsPinned)
+            .ThenByDescending(session => session.UpdatedAt)
             .ToList();
 
         if (sessions.Count == 0)
@@ -72,7 +96,9 @@ public partial class MainWindow : Window
     private void ReplaceSessionItems(IEnumerable<NoteSession> sessions)
     {
         _sessions.Clear();
-        foreach (var session in sessions.OrderByDescending(session => session.UpdatedAt))
+        foreach (var session in sessions
+                     .OrderByDescending(session => session.IsPinned)
+                     .ThenByDescending(session => session.UpdatedAt))
         {
             _sessions.Add(new SessionListItem(session));
         }
@@ -93,6 +119,11 @@ public partial class MainWindow : Window
     }
 
     private async void NewSessionButton_Click(object sender, RoutedEventArgs e)
+    {
+        await CreateNewSessionAsync();
+    }
+
+    private async Task CreateNewSessionAsync()
     {
         await SaveCurrentSessionAsync();
 
@@ -239,11 +270,28 @@ public partial class MainWindow : Window
         await _sessionStorage.DeleteSessionAsync(item.Session);
         _sessions.Remove(item);
         _hasUnsavedIndex = true;
+
+        if (_currentSession?.Id == item.Id)
+        {
+            _currentSession = null;
+            _hasUnsavedContent = false;
+            _isLoadingSession = true;
+            try
+            {
+                SessionTitleBox.Text = string.Empty;
+                Editor.Text = string.Empty;
+            }
+            finally
+            {
+                _isLoadingSession = false;
+            }
+        }
+
         await SaveIndexIfNeededAsync();
 
         if (_sessions.Count == 0)
         {
-            NewSessionButton_Click(sender, e);
+            await CreateNewSessionAsync();
             return;
         }
 
@@ -258,11 +306,19 @@ public partial class MainWindow : Window
         }
 
         item.Session.IsPinned = !item.Session.IsPinned;
-        item.Session.UpdatedAt = DateTimeOffset.UtcNow;
-        item.Session.ExpiresAt = item.Session.UpdatedAt.AddDays(7);
         _hasUnsavedIndex = true;
         await SaveIndexIfNeededAsync();
         UpdateSessionItems();
+    }
+
+    private void SessionsList_PreviewMouseRightButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        var item = FindAncestor<ListBoxItem>((DependencyObject)e.OriginalSource);
+        if (item is not null)
+        {
+            item.IsSelected = true;
+            item.Focus();
+        }
     }
 
     private void UpdateStatus()
@@ -285,5 +341,21 @@ public partial class MainWindow : Window
         }
 
         return firstLine.Length <= 80 ? firstLine : $"{firstLine[..80]}...";
+    }
+
+    private static T? FindAncestor<T>(DependencyObject? current)
+        where T : DependencyObject
+    {
+        while (current is not null)
+        {
+            if (current is T match)
+            {
+                return match;
+            }
+
+            current = VisualTreeHelper.GetParent(current);
+        }
+
+        return null;
     }
 }
