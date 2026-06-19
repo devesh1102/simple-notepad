@@ -166,37 +166,32 @@ public sealed class SessionStorageService
 
     private async Task<IReadOnlyList<NoteSession>> TryLoadBackupIndexAsync(CancellationToken cancellationToken)
     {
-        var backupPath = GetBackupPath(_indexPath);
+        foreach (var backupPath in GetBackupCandidates(_indexPath))
+        {
+            try
+            {
+                await using var stream = File.OpenRead(backupPath);
+                var sessions = await JsonSerializer.DeserializeAsync<List<NoteSession>>(stream, JsonOptions, cancellationToken);
+                return sessions ?? [];
+            }
+            catch (JsonException)
+            {
+                await QuarantineFileAsync(backupPath, cancellationToken);
+            }
+            catch (DecoderFallbackException)
+            {
+                await QuarantineFileAsync(backupPath, cancellationToken);
+            }
+            catch (IOException)
+            {
+            }
+            catch (UnauthorizedAccessException)
+            {
+            }
 
-        if (!File.Exists(backupPath))
-        {
-            return [];
         }
 
-        try
-        {
-            await using var stream = File.OpenRead(backupPath);
-            var sessions = await JsonSerializer.DeserializeAsync<List<NoteSession>>(stream, JsonOptions, cancellationToken);
-            return sessions ?? [];
-        }
-        catch (JsonException)
-        {
-            await QuarantineFileAsync(backupPath, cancellationToken);
-            return [];
-        }
-        catch (DecoderFallbackException)
-        {
-            await QuarantineFileAsync(backupPath, cancellationToken);
-            return [];
-        }
-        catch (IOException)
-        {
-            return [];
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return [];
-        }
+        return [];
     }
 
     private static async Task AtomicWriteTextAsync(string path, string content, CancellationToken cancellationToken)
@@ -221,6 +216,7 @@ public sealed class SessionStorageService
                 var replacementBackupPath = $"{backupPath}.{Guid.NewGuid():N}.replace";
                 File.Replace(tempPath, path, replacementBackupPath, ignoreMetadataErrors: true);
                 PromoteReplacementBackup(replacementBackupPath, backupPath);
+                PruneReplacementBackups(backupPath);
                 return;
             }
 
@@ -276,30 +272,25 @@ public sealed class SessionStorageService
         Exception originalException,
         CancellationToken cancellationToken)
     {
-        var backupPath = GetBackupPath(path);
-
-        if (!File.Exists(backupPath))
+        foreach (var backupPath in GetBackupCandidates(path))
         {
-            throw new InvalidOperationException($"Session content could not be read and no backup exists: {path}", originalException);
+            try
+            {
+                return await File.ReadAllTextAsync(backupPath, StrictUtf8, cancellationToken);
+            }
+            catch (DecoderFallbackException)
+            {
+                await QuarantineFileAsync(backupPath, cancellationToken);
+            }
+            catch (IOException)
+            {
+            }
+            catch (UnauthorizedAccessException)
+            {
+            }
         }
 
-        try
-        {
-            return await File.ReadAllTextAsync(backupPath, StrictUtf8, cancellationToken);
-        }
-        catch (DecoderFallbackException backupException)
-        {
-            await QuarantineFileAsync(backupPath, cancellationToken);
-            throw new InvalidOperationException($"Session content and backup were unreadable: {path}", backupException);
-        }
-        catch (IOException backupException)
-        {
-            throw new InvalidOperationException($"Session content and backup could not be read: {path}", backupException);
-        }
-        catch (UnauthorizedAccessException backupException)
-        {
-            throw new InvalidOperationException($"Session content backup could not be accessed: {backupPath}", backupException);
-        }
+        throw new InvalidOperationException($"Session content and backups could not be read: {path}", originalException);
     }
 
     private static async Task QuarantineFileAsync(string path, CancellationToken cancellationToken)
@@ -323,9 +314,80 @@ public sealed class SessionStorageService
         }
         catch (IOException)
         {
+            PruneReplacementBackups(backupPath, replacementBackupPath);
         }
         catch (UnauthorizedAccessException)
         {
+            PruneReplacementBackups(backupPath, replacementBackupPath);
+        }
+    }
+
+    private static IReadOnlyList<string> GetBackupCandidates(string path)
+    {
+        var backupPath = GetBackupPath(path);
+        var candidates = new List<string>();
+
+        if (File.Exists(backupPath))
+        {
+            candidates.Add(backupPath);
+        }
+
+        candidates.AddRange(GetReplacementBackups(backupPath));
+
+        return candidates
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderByDescending(GetLastWriteTimeOrMinValue)
+            .ToList();
+    }
+
+    private static IReadOnlyList<string> GetReplacementBackups(string backupPath)
+    {
+        var directory = Path.GetDirectoryName(backupPath);
+        if (string.IsNullOrWhiteSpace(directory) || !Directory.Exists(directory))
+        {
+            return [];
+        }
+
+        try
+        {
+            return Directory.GetFiles(directory, $"{Path.GetFileName(backupPath)}.*.replace");
+        }
+        catch (IOException)
+        {
+            return [];
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return [];
+        }
+    }
+
+    private static void PruneReplacementBackups(string backupPath, string? keepPath = null)
+    {
+        foreach (var replacementBackup in GetReplacementBackups(backupPath))
+        {
+            if (keepPath is not null && string.Equals(replacementBackup, keepPath, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            TryDeleteFile(replacementBackup);
+        }
+    }
+
+    private static DateTime GetLastWriteTimeOrMinValue(string path)
+    {
+        try
+        {
+            return File.GetLastWriteTimeUtc(path);
+        }
+        catch (IOException)
+        {
+            return DateTime.MinValue;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return DateTime.MinValue;
         }
     }
 
