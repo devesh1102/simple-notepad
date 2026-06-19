@@ -215,8 +215,8 @@ public sealed class SessionStorageService
             {
                 var replacementBackupPath = $"{backupPath}.{Guid.NewGuid():N}.replace";
                 File.Replace(tempPath, path, replacementBackupPath, ignoreMetadataErrors: true);
-                PromoteReplacementBackup(replacementBackupPath, backupPath);
-                PruneReplacementBackups(backupPath);
+                var promoted = PromoteReplacementBackup(replacementBackupPath, backupPath);
+                PruneReplacementBackups(backupPath, promoted ? null : replacementBackupPath);
                 return;
             }
 
@@ -247,23 +247,26 @@ public sealed class SessionStorageService
         }
     }
 
-    private static void PromoteReplacementBackup(string replacementBackupPath, string backupPath)
+    private static bool PromoteReplacementBackup(string replacementBackupPath, string backupPath)
     {
         try
         {
             if (File.Exists(backupPath))
             {
                 File.Replace(replacementBackupPath, backupPath, null, ignoreMetadataErrors: true);
-                return;
+                return true;
             }
 
             File.Move(replacementBackupPath, backupPath);
+            return true;
         }
         catch (IOException)
         {
+            return false;
         }
         catch (UnauthorizedAccessException)
         {
+            return false;
         }
     }
 
