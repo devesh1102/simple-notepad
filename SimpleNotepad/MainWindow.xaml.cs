@@ -24,6 +24,7 @@ public partial class MainWindow : Window
     private bool _isLoadingSession;
     private bool _isUpdatingSessions;
     private bool _isClosingAfterSave;
+    private bool _isClosingSaveInProgress;
     private bool _hasFreshContextMenuTarget;
     private bool _hasUnsavedContent;
     private bool _hasUnsavedIndex;
@@ -57,11 +58,18 @@ public partial class MainWindow : Window
         }
 
         e.Cancel = true;
+        if (_isClosingSaveInProgress)
+        {
+            return;
+        }
+
+        _isClosingSaveInProgress = true;
         Editor.IsReadOnly = true;
+        SessionTitleBox.IsReadOnly = true;
 
         try
         {
-            await SaveCurrentSessionAsync();
+            await SaveCurrentSessionAsync(refreshSessions: false);
             await SaveIndexIfNeededAsync();
             await _settingsService.SaveAsync(_settings);
             _isClosingAfterSave = true;
@@ -69,7 +77,9 @@ public partial class MainWindow : Window
         }
         catch (Exception exception)
         {
+            _isClosingSaveInProgress = false;
             Editor.IsReadOnly = false;
+            SessionTitleBox.IsReadOnly = false;
             MessageBox.Show(
                 $"Simple Notepad could not save your latest changes:\n\n{exception.Message}",
                 "Save failed",
@@ -160,7 +170,9 @@ public partial class MainWindow : Window
                 return;
             }
 
-            await SaveCurrentSessionAsync();
+            Editor.IsReadOnly = true;
+            SessionTitleBox.IsReadOnly = true;
+            await SaveCurrentSessionAsync(refreshSessions: false);
 
             if (requestId != _selectionRequestId)
             {
@@ -168,9 +180,20 @@ public partial class MainWindow : Window
             }
 
             await OpenSessionAsync(item.Session);
+            UpdateSessionItems();
+        }
+        catch (Exception exception)
+        {
+            MessageBox.Show(
+                $"Simple Notepad could not switch sessions:\n\n{exception.Message}",
+                "Session switch failed",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
         }
         finally
         {
+            Editor.IsReadOnly = false;
+            SessionTitleBox.IsReadOnly = false;
             _selectionSemaphore.Release();
         }
     }
@@ -203,7 +226,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private async Task SaveCurrentSessionAsync()
+    private async Task SaveCurrentSessionAsync(bool refreshSessions = true)
     {
         if (_currentSession is null)
         {
@@ -233,7 +256,7 @@ public partial class MainWindow : Window
         await SaveIndexIfNeededAsync();
         SaveStateText.Text = _hasUnsavedContent || _hasUnsavedIndex ? "Unsaved" : "Saved";
 
-        if (shouldRefreshSessions)
+        if (shouldRefreshSessions && refreshSessions)
         {
             UpdateSessionItems();
         }

@@ -79,10 +79,24 @@ public sealed class AppSettingsService
         {
             if (File.Exists(tempPath))
             {
-                File.Delete(tempPath);
+                TryDeleteFile(tempPath);
             }
 
             throw;
+        }
+    }
+
+    private static void TryDeleteFile(string path)
+    {
+        try
+        {
+            File.Delete(path);
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
         }
     }
 }
