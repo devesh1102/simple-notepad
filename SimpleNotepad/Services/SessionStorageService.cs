@@ -314,11 +314,9 @@ public sealed class SessionStorageService
         }
         catch (IOException)
         {
-            PruneReplacementBackups(backupPath, replacementBackupPath);
         }
         catch (UnauthorizedAccessException)
         {
-            PruneReplacementBackups(backupPath, replacementBackupPath);
         }
     }
 
