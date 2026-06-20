@@ -1,6 +1,7 @@
 using System.IO;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using SimpleNotepad.Models;
 
 namespace SimpleNotepad.Services;
@@ -12,7 +13,10 @@ public sealed class AppSettingsService
 
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
-        WriteIndented = true
+        WriteIndented = true,
+        // Defensive: never let a stray non-finite double (e.g. NaN/Infinity from window
+        // metrics) make a settings save throw and surface as a "could not save" error.
+        NumberHandling = JsonNumberHandling.AllowNamedFloatingPointLiterals
     };
 
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);

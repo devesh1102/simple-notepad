@@ -294,9 +294,12 @@ public partial class MainWindow : Window
     private void CaptureUiToSettings()
     {
         _settings.WordWrap = Editor.WordWrap;
-        _settings.FontSize = Editor.FontSize;
+        if (double.IsFinite(Editor.FontSize))
+        {
+            _settings.FontSize = Editor.FontSize;
+        }
 
-        if (SidebarColumn.ActualWidth > 0)
+        if (SidebarColumn.ActualWidth > 0 && double.IsFinite(SidebarColumn.ActualWidth))
         {
             _settings.SidebarWidth = SidebarColumn.ActualWidth;
         }
@@ -306,7 +309,7 @@ public partial class MainWindow : Window
             _settings.WindowMaximized = true;
 
             var bounds = RestoreBounds;
-            if (bounds != Rect.Empty)
+            if (bounds != Rect.Empty && IsFiniteRect(bounds))
             {
                 _settings.WindowLeft = bounds.Left;
                 _settings.WindowTop = bounds.Top;
@@ -317,11 +320,34 @@ public partial class MainWindow : Window
         else if (WindowState == WindowState.Normal)
         {
             _settings.WindowMaximized = false;
-            _settings.WindowLeft = Left;
-            _settings.WindowTop = Top;
-            _settings.WindowWidth = Width;
-            _settings.WindowHeight = Height;
+            if (double.IsFinite(Left))
+            {
+                _settings.WindowLeft = Left;
+            }
+
+            if (double.IsFinite(Top))
+            {
+                _settings.WindowTop = Top;
+            }
+
+            if (double.IsFinite(Width))
+            {
+                _settings.WindowWidth = Width;
+            }
+
+            if (double.IsFinite(Height))
+            {
+                _settings.WindowHeight = Height;
+            }
         }
+    }
+
+    private static bool IsFiniteRect(Rect rect)
+    {
+        return double.IsFinite(rect.Left)
+            && double.IsFinite(rect.Top)
+            && double.IsFinite(rect.Width)
+            && double.IsFinite(rect.Height);
     }
 
     private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
@@ -1174,12 +1200,18 @@ public partial class MainWindow : Window
         }
     }
 
-    private void SyncSettingsButton_Click(object sender, RoutedEventArgs e)
+    private void SettingsButton_Click(object sender, RoutedEventArgs e)
     {
-        var dialog = new SyncSettingsWindow(_settings, _syncService) { Owner = this };
+        OpenSettings(SettingsSection.Ai);
+    }
+
+    private void OpenSettings(SettingsSection focus)
+    {
+        var dialog = new SettingsWindow(_settings, _rewriteService, _syncService, focus) { Owner = this };
         if (dialog.ShowDialog() == true)
         {
             _ = PersistSettingsAsync();
+            UpdateAiState();
             UpdateSyncStatus();
         }
     }
@@ -1188,7 +1220,7 @@ public partial class MainWindow : Window
     {
         if (!_syncService.IsConfigured(_settings))
         {
-            SyncSettingsButton_Click(this, new RoutedEventArgs());
+            OpenSettings(SettingsSection.Sync);
             return;
         }
 
@@ -1290,16 +1322,6 @@ public partial class MainWindow : Window
         }
     }
 
-    private void AiSettingsButton_Click(object sender, RoutedEventArgs e)
-    {
-        var dialog = new AiSettingsWindow(_settings, _rewriteService) { Owner = this };
-        if (dialog.ShowDialog() == true)
-        {
-            _ = PersistSettingsAsync();
-            UpdateAiState();
-        }
-    }
-
     private bool EnsureAiConfigured()
     {
         if (_rewriteService.IsConfigured(_settings))
@@ -1315,7 +1337,7 @@ public partial class MainWindow : Window
 
         if (result == MessageBoxResult.Yes)
         {
-            AiSettingsButton_Click(this, new RoutedEventArgs());
+            OpenSettings(SettingsSection.Ai);
         }
 
         return _rewriteService.IsConfigured(_settings);

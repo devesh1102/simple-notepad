@@ -1,0 +1,141 @@
+﻿<Window x:Class="SimpleNotepad.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Settings"
+        Icon="app.ico"
+        Height="640"
+        Width="580"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="CanResizeWithGrip"
+        ShowInTaskbar="False"
+        Background="{DynamicResource Brush.WindowBackground}"
+        FontFamily="Segoe UI"
+        FontSize="13">
+    <Grid Margin="18">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto" Padding="0,0,8,0">
+            <StackPanel>
+
+                <!-- ===================== AI REWRITE ===================== -->
+                <TextBlock Text="AI Rewrite (Azure OpenAI)"
+                           FontSize="16" FontWeight="SemiBold"
+                           Foreground="{DynamicResource Brush.PrimaryText}" />
+                <TextBlock Margin="0,4,0,12" TextWrapping="Wrap"
+                           Foreground="{DynamicResource Brush.SecondaryText}"
+                           Text="Powers the Rewrite button and AI title generation. The API key is stored encrypted on this device (Windows DPAPI) and never written in plain text. Leave all fields blank to turn AI features off." />
+
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0" Grid.Column="0" Margin="0,0,10,10" VerticalAlignment="Center"
+                               Foreground="{DynamicResource Brush.PrimaryText}" Text="Endpoint" />
+                    <TextBox x:Name="AiEndpointBox" Grid.Row="0" Grid.Column="1" Margin="0,0,0,10" Padding="6,4"
+                             ToolTip="e.g. https://my-resource.openai.azure.com/" />
+
+                    <TextBlock Grid.Row="1" Grid.Column="0" Margin="0,0,10,10" VerticalAlignment="Center"
+                               Foreground="{DynamicResource Brush.PrimaryText}" Text="Deployment" />
+                    <TextBox x:Name="AiDeploymentBox" Grid.Row="1" Grid.Column="1" Margin="0,0,0,10" Padding="6,4"
+                             ToolTip="The chat model deployment name, e.g. gpt-4o" />
+
+                    <TextBlock Grid.Row="2" Grid.Column="0" Margin="0,0,10,10" VerticalAlignment="Center"
+                               Foreground="{DynamicResource Brush.PrimaryText}" Text="API key" />
+                    <PasswordBox x:Name="AiApiKeyBox" Grid.Row="2" Grid.Column="1" Margin="0,0,0,10" Padding="6,4" />
+
+                    <TextBlock Grid.Row="3" Grid.Column="0" Margin="0,0,10,10" VerticalAlignment="Center"
+                               Foreground="{DynamicResource Brush.PrimaryText}" Text="Temperature" />
+                    <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal" Margin="0,0,0,10">
+                        <Slider x:Name="AiTemperatureSlider" Width="220" Minimum="0" Maximum="2"
+                                TickFrequency="0.1" IsSnapToTickEnabled="True" VerticalAlignment="Center" />
+                        <TextBlock Margin="10,0,0,0" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource Brush.PrimaryText}"
+                                   Text="{Binding ElementName=AiTemperatureSlider, Path=Value, StringFormat=F1}" />
+                    </StackPanel>
+                </Grid>
+
+                <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                    <Button x:Name="AiTestButton" Content="Test AI connection" Padding="12,5"
+                            Click="AiTestButton_Click" />
+                    <TextBlock x:Name="AiStatusText" Margin="12,0,0,0" VerticalAlignment="Center"
+                               TextWrapping="Wrap" Foreground="{DynamicResource Brush.SecondaryText}" />
+                </StackPanel>
+
+                <Border Height="1" Margin="0,18,0,18"
+                        Background="{DynamicResource Brush.Border}" />
+
+                <!-- ===================== CLOUD SYNC ===================== -->
+                <TextBlock Text="Cloud Sync (Azure Blob Storage)"
+                           FontSize="16" FontWeight="SemiBold"
+                           Foreground="{DynamicResource Brush.PrimaryText}" />
+                <TextBlock Margin="0,4,0,12" TextWrapping="Wrap"
+                           Foreground="{DynamicResource Brush.SecondaryText}"
+                           Text="Sync your own sessions across your devices through a private Azure Blob container. The connection string grants full access to that storage account — use a dedicated account. It is stored encrypted on this device (Windows DPAPI). Sessions from other devices appear read-only; use 'Duplicate to edit' to fork them. Leave the connection string blank to turn sync off." />
+
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0" Grid.Column="0" Margin="0,0,10,10" VerticalAlignment="Top"
+                               Foreground="{DynamicResource Brush.PrimaryText}" Text="Connection string" />
+                    <TextBox x:Name="SyncConnectionStringBox" Grid.Row="0" Grid.Column="1" Margin="0,0,0,10" Padding="6,4"
+                             Height="56" TextWrapping="Wrap" AcceptsReturn="True" VerticalScrollBarVisibility="Auto"
+                             ToolTip="DefaultEndpointsProtocol=https;AccountName=...;AccountKey=...;EndpointSuffix=core.windows.net" />
+
+                    <TextBlock Grid.Row="1" Grid.Column="0" Margin="0,0,10,10" VerticalAlignment="Center"
+                               Foreground="{DynamicResource Brush.PrimaryText}" Text="Container" />
+                    <TextBox x:Name="SyncContainerBox" Grid.Row="1" Grid.Column="1" Margin="0,0,0,10" Padding="6,4"
+                             ToolTip="Blob container name (lowercase). Default: simplenotepad" />
+
+                    <TextBlock Grid.Row="2" Grid.Column="0" Margin="0,0,10,10" VerticalAlignment="Center"
+                               Foreground="{DynamicResource Brush.PrimaryText}" Text="Device name" />
+                    <TextBox x:Name="SyncDeviceNameBox" Grid.Row="2" Grid.Column="1" Margin="0,0,0,10" Padding="6,4"
+                             ToolTip="How this device is labelled on your other devices." />
+
+                    <TextBlock Grid.Row="3" Grid.Column="0" Margin="0,0,10,10" VerticalAlignment="Center"
+                               Foreground="{DynamicResource Brush.PrimaryText}" Text="Device color" />
+                    <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal" Margin="0,0,0,10">
+                        <Border x:Name="ColorSwatch" Width="22" Height="22" CornerRadius="3"
+                                BorderBrush="{DynamicResource Brush.Border}" BorderThickness="1" />
+                        <TextBox x:Name="SyncDeviceColorBox" Width="110" Margin="10,0,0,0" Padding="6,4"
+                                 TextChanged="SyncDeviceColorBox_TextChanged"
+                                 ToolTip="Hex color used to tint this device's notes, e.g. #4EC9B0" />
+                    </StackPanel>
+                </Grid>
+
+                <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                    <Button x:Name="SyncTestButton" Content="Test sync connection" Padding="12,5"
+                            Click="SyncTestButton_Click" />
+                    <TextBlock x:Name="SyncStatusText" Margin="12,0,0,0" VerticalAlignment="Center"
+                               TextWrapping="Wrap" Foreground="{DynamicResource Brush.SecondaryText}" />
+                </StackPanel>
+
+            </StackPanel>
+        </ScrollViewer>
+
+        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+            <Button x:Name="SaveButton" Content="Save" Padding="16,5" Margin="0,0,8,0"
+                    IsDefault="True" Click="SaveButton_Click" />
+            <Button Content="Cancel" Padding="12,5" IsCancel="True" />
+        </StackPanel>
+    </Grid>
+</Window>

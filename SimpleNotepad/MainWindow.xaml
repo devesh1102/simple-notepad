@@ -154,11 +154,11 @@
 
                 <DockPanel LastChildFill="True">
                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
-                        <Button x:Name="SyncSettingsButton"
+                        <Button x:Name="SettingsButton"
                                 Padding="6,3" Margin="0,0,6,0"
                                 Content="⚙"
-                                ToolTip="Configure cloud sync"
-                                Click="SyncSettingsButton_Click" />
+                                ToolTip="Settings (AI &amp; cloud sync)"
+                                Click="SettingsButton_Click" />
                         <Button x:Name="SyncButton"
                                 Padding="8,3"
                                 Content="Sync"
@@ -303,17 +303,11 @@
                                ToolTip="Open selected JSON or the full note in Visual Studio Code"
                                Click="OpenJsonInVsCodeButton_Click" />
                         <Button x:Name="RewriteButton"
-                               Margin="0,0,8,0"
+                               Margin="0,0,12,0"
                                Padding="8,3"
                                Content="Rewrite"
                                ToolTip="Rewrite the selected text with AI"
                                Click="RewriteButton_Click" />
-                        <Button x:Name="AiSettingsButton"
-                               Margin="0,0,12,0"
-                               Padding="8,3"
-                               Content="AI…"
-                               ToolTip="Configure Azure OpenAI for AI features"
-                               Click="AiSettingsButton_Click" />
                         <Button x:Name="WordWrapButton"
                                Margin="0,0,12,0"
                                Padding="8,3"
