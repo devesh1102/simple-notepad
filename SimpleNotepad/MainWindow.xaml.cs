@@ -36,6 +36,7 @@ public partial class MainWindow : Window
     private readonly LinkedPowerShellService _linkedPowerShell = new();
     private readonly AiRewriteService _rewriteService = new();
     private readonly CloudSyncService _syncService = new();
+    private readonly ProvisioningImporter _provisioningImporter = new();
     private bool _isSyncing;
     private readonly ObservableCollection<SessionListItem> _sessions = [];
     private readonly ICollectionView _sessionsView;
@@ -355,6 +356,13 @@ public partial class MainWindow : Window
         try
         {
             _settings = await _settingsService.LoadAsync();
+
+            // Pull in any credentials the installer dropped (re-encrypted under this user).
+            if (_provisioningImporter.TryImport(_settings))
+            {
+                await _settingsService.SaveAsync(_settings);
+            }
+
             ApplySettingsToUi();
             await LoadSessionsAsync();
         }
