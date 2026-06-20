@@ -69,11 +69,6 @@ public partial class MainWindow : Window
     private const int JsonHighlightMaxLength = 200_000;
     private const int JsonAutoValidationMaxLength = 200_000;
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
-    private static readonly JsonSerializerOptions PrettyJsonOptions = new()
-    {
-        WriteIndented = true
-    };
-
     public MainWindow()
     {
         InitializeComponent();
@@ -360,6 +355,7 @@ public partial class MainWindow : Window
             // Pull in any credentials the installer dropped (re-encrypted under this user).
             if (_provisioningImporter.TryImport(_settings))
             {
+                AppLogger.Info("Imported installer-provisioned credentials into settings.");
                 await _settingsService.SaveAsync(_settings);
             }
 
@@ -432,6 +428,11 @@ public partial class MainWindow : Window
     {
         var loaded = await _sessionStorage.LoadIndexAsync();
         var active = await _sessionStorage.PurgeExpiredSessionsAsync(loaded);
+        var purgedCount = loaded.Count - active.Count;
+        if (purgedCount > 0)
+        {
+            AppLogger.Info($"Purged {purgedCount} expired session(s) on load.");
+        }
 
         var sessions = active
             .OrderByDescending(session => session.IsPinned)
@@ -1250,7 +1251,9 @@ public partial class MainWindow : Window
 
                 var currentSessions = _sessions.Select(item => item.Session).ToList();
                 using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(5));
+                AppLogger.Info("Cloud sync started.");
                 var result = await _syncService.SyncAsync(_settings, currentSessions, _sessionStorage, cts.Token);
+                AppLogger.Info($"Cloud sync completed: {result.Summary}");
 
                 var selectedId = _currentSession?.Id;
                 ReplaceSessionItems(result.Sessions);
@@ -1277,6 +1280,7 @@ public partial class MainWindow : Window
         }
         catch (OperationCanceledException)
         {
+            AppLogger.Warn("Cloud sync timed out.");
             UpdateSyncStatus("Sync timed out.");
         }
         catch (Exception exception)
@@ -1551,21 +1555,7 @@ public partial class MainWindow : Window
     }
 
     private static bool TryFormatJson(string json, bool writeIndented, out string formattedJson, out string errorMessage)
-    {
-        try
-        {
-            using var document = JsonDocument.Parse(json);
-            formattedJson = JsonSerializer.Serialize(document.RootElement, writeIndented ? PrettyJsonOptions : JsonSerializerOptions.Default);
-            errorMessage = string.Empty;
-            return true;
-        }
-        catch (JsonException exception)
-        {
-            formattedJson = string.Empty;
-            errorMessage = exception.Message;
-            return false;
-        }
-    }
+        => JsonFormatter.TryFormat(json, writeIndented, out formattedJson, out errorMessage);
 
     private void UpdateJsonState()
     {
@@ -2268,6 +2258,7 @@ public partial class MainWindow : Window
 
     private static void ShowError(string message, Exception exception)
     {
+        AppLogger.Error(message, exception);
         MessageBox.Show(
             $"{message}\n\n{exception.Message}",
             "Simple Notepad",

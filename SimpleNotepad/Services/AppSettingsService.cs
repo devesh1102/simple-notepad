@@ -30,6 +30,17 @@ public sealed class AppSettingsService
         _settingsPath = Path.Combine(localAppData, AppFolderName, SettingsFileName);
     }
 
+    /// <summary>Test/diagnostic overload that targets an explicit settings file path.</summary>
+    public AppSettingsService(string settingsPath)
+    {
+        if (string.IsNullOrWhiteSpace(settingsPath))
+        {
+            throw new ArgumentException("Settings path is required.", nameof(settingsPath));
+        }
+
+        _settingsPath = settingsPath;
+    }
+
     public async Task<AppSettings> LoadAsync(CancellationToken cancellationToken = default)
     {
         if (!File.Exists(_settingsPath))

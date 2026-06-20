@@ -99,11 +99,18 @@ All notes and settings are stored locally under:
 %LOCALAPPDATA%\SimpleNotepad\
   ├─ sessions\               # one .txt per session
   ├─ sessions.index.json     # session list + metadata
-  └─ settings.json           # theme, font, window, AI & sync config
+  ├─ settings.json           # theme, font, window, AI & sync config
+  └─ logs\                   # daily app-yyyyMMdd.log files (auto-pruned after 7 days)
 ```
 
 Secrets (Azure OpenAI API key, sync connection string) are stored **encrypted** via Windows DPAPI,
 scoped to your Windows user account.
+
+### Logs
+
+The app writes a lightweight daily log to `%LOCALAPPDATA%\SimpleNotepad\logs\app-yyyyMMdd.log`,
+capturing startup/exit, errors, sync results, and unhandled exceptions. Old logs are removed
+automatically after 7 days. Open the folder quickly from **⚙ Settings → Open logs folder**.
 
 ---
 
@@ -130,6 +137,30 @@ notes it creates; other devices appear as read‑only mirrors you can duplicate 
 The installer can optionally collect your AI and sync credentials during setup. They are written to a
 short‑lived plaintext file under `%PROGRAMDATA%\SimpleNotepad`, which the app imports on first run —
 re‑encrypting the secrets under your user account (DPAPI) and then deleting the plaintext file.
+
+---
+
+## Tests
+
+Unit and integration tests live in `SimpleNotepad.Tests` (xUnit). Run them with:
+
+```powershell
+dotnet test .\SimpleNotepad.Tests\SimpleNotepad.Tests.csproj
+```
+
+- **Unit tests** cover JSON formatting, DPAPI secret protection, settings load/save (including the
+  non-finite-double regression), installer provisioning import, and session storage (round-trips,
+  7-day purge, and path-traversal rejection).
+- **Integration tests** (`[Trait("Category","Integration")]`) exercise cloud sync against the
+  [Azurite](https://github.com/Azure/Azurite) emulator. They **skip automatically** when Azurite is
+  not reachable. To run them, start Azurite first:
+
+  ```powershell
+  npm install -g azurite
+  azurite-blob --skipApiVersionCheck --blobHost 127.0.0.1 --blobPort 10000 --location .\azurite-data
+  ```
+
+CI runs the full suite (with Azurite) on every push before building the release.
 
 ---
 

@@ -254,6 +254,28 @@ public partial class SettingsWindow : Window
         }
     }
 
+    private void OpenLogsButton_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            System.IO.Directory.CreateDirectory(AppLogger.LogFolder);
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = AppLogger.LogFolder,
+                UseShellExecute = true,
+            });
+        }
+        catch (Exception exception)
+        {
+            AppLogger.Error("Could not open logs folder.", exception);
+            System.Windows.MessageBox.Show(
+                $"Could not open the logs folder.\n\n{exception.Message}",
+                "Simple Notepad",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+        }
+    }
+
     private void SaveButton_Click(object sender, RoutedEventArgs e)
     {
         // AI section.

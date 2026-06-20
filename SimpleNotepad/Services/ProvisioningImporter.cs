@@ -25,6 +25,17 @@ public sealed class ProvisioningImporter
         _provisioningPath = Path.Combine(commonAppData, AppFolderName, ProvisioningFileName);
     }
 
+    /// <summary>Test/diagnostic overload that targets an explicit provisioning file path.</summary>
+    public ProvisioningImporter(string provisioningPath)
+    {
+        if (string.IsNullOrWhiteSpace(provisioningPath))
+        {
+            throw new ArgumentException("Provisioning path is required.", nameof(provisioningPath));
+        }
+
+        _provisioningPath = provisioningPath;
+    }
+
     /// <summary>
     /// Imports installer-provisioned credentials into <paramref name="settings"/> if a
     /// provisioning file exists. Only fills fields that are currently empty so it never clobbers

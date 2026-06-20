@@ -35,7 +35,23 @@ jobs:
           Write-Host "Building version $version"
 
       - name: Restore
-        run: dotnet restore .\SimpleNotepad\SimpleNotepad.csproj
+        run: dotnet restore .\SimpleNotepad.Tests\SimpleNotepad.Tests.csproj
+
+      - name: Build solution
+        run: dotnet build .\SimpleNotepad.Tests\SimpleNotepad.Tests.csproj -c Release --no-restore
+
+      - name: Start Azurite (for integration tests)
+        shell: pwsh
+        run: |
+          npm install -g azurite
+          $loc = Join-Path $env:RUNNER_TEMP 'azurite'
+          New-Item -ItemType Directory -Force -Path $loc | Out-Null
+          Start-Process -FilePath "azurite-blob" -ArgumentList "--silent","--skipApiVersionCheck","--blobHost","127.0.0.1","--blobPort","10000","--location",$loc -WindowStyle Hidden
+          # Give Azurite a moment to start listening before tests probe it.
+          Start-Sleep -Seconds 5
+
+      - name: Run tests
+        run: dotnet test .\SimpleNotepad.Tests\SimpleNotepad.Tests.csproj -c Release --no-build --verbosity normal
 
       - name: Publish app folder (for installer)
         run: >
