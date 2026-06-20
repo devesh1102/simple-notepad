@@ -1,5 +1,6 @@
 using System.ClientModel;
 using Azure.AI.OpenAI;
+using OpenAI;
 using OpenAI.Chat;
 using SimpleNotepad.Models;
 
@@ -143,7 +144,32 @@ public sealed class AiRewriteService
             throw new InvalidOperationException("Azure OpenAI endpoint must be a valid HTTPS URL.");
         }
 
+        // Azure AI Foundry resources (*.services.ai.azure.com) expose an OpenAI-compatible
+        // "/openai/v1" endpoint where the request carries model=<deployment-name>, rather than the
+        // classic Azure OpenAI "/openai/deployments/{name}?api-version=" routing. Detect that style
+        // and use the plain OpenAI client so Foundry-hosted deployments (incl. non-OpenAI models)
+        // resolve correctly. The API key is sent as a bearer token, which Foundry accepts.
+        if (IsFoundryEndpoint(endpointUri))
+        {
+            var options = new OpenAIClientOptions { Endpoint = ToFoundryV1BaseUri(endpointUri) };
+            var openAiClient = new OpenAIClient(new ApiKeyCredential(apiKey), options);
+            return openAiClient.GetChatClient(settings.AiDeployment);
+        }
+
         var azureClient = new AzureOpenAIClient(endpointUri, new ApiKeyCredential(apiKey));
         return azureClient.GetChatClient(settings.AiDeployment);
+    }
+
+    private static bool IsFoundryEndpoint(Uri endpoint)
+    {
+        return endpoint.Host.EndsWith(".services.ai.azure.com", StringComparison.OrdinalIgnoreCase)
+            || endpoint.AbsolutePath.Contains("/openai/v1", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static Uri ToFoundryV1BaseUri(Uri endpoint)
+    {
+        // Normalise whatever the user pasted (bare host, a project endpoint such as
+        // ".../api/projects/<name>", or an explicit ".../openai/v1") down to "<scheme>://<host>/openai/v1".
+        return new Uri($"{endpoint.Scheme}://{endpoint.Authority}/openai/v1");
     }
 }

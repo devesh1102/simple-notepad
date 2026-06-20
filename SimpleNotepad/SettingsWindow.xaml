@@ -50,9 +50,13 @@
                     <TextBox x:Name="AiDeploymentBox" Grid.Row="1" Grid.Column="1" Margin="0,0,0,10" Padding="6,4"
                              ToolTip="The chat model deployment name, e.g. gpt-4o" />
 
-                    <TextBlock Grid.Row="2" Grid.Column="0" Margin="0,0,10,10" VerticalAlignment="Center"
+                    <TextBlock Grid.Row="2" Grid.Column="0" Margin="0,0,10,10" VerticalAlignment="Top"
                                Foreground="{DynamicResource Brush.PrimaryText}" Text="API key" />
-                    <PasswordBox x:Name="AiApiKeyBox" Grid.Row="2" Grid.Column="1" Margin="0,0,0,10" Padding="6,4" />
+                    <StackPanel Grid.Row="2" Grid.Column="1" Margin="0,0,0,10">
+                        <PasswordBox x:Name="AiApiKeyBox" Padding="6,4" />
+                        <TextBlock x:Name="AiKeyConfiguredText" Margin="0,4,0,0" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource Brush.SecondaryText}" Visibility="Collapsed" />
+                    </StackPanel>
 
                     <TextBlock Grid.Row="3" Grid.Column="0" Margin="0,0,10,10" VerticalAlignment="Center"
                                Foreground="{DynamicResource Brush.PrimaryText}" Text="Temperature" />
@@ -97,9 +101,12 @@
 
                     <TextBlock Grid.Row="0" Grid.Column="0" Margin="0,0,10,10" VerticalAlignment="Top"
                                Foreground="{DynamicResource Brush.PrimaryText}" Text="Connection string" />
-                    <TextBox x:Name="SyncConnectionStringBox" Grid.Row="0" Grid.Column="1" Margin="0,0,0,10" Padding="6,4"
-                             Height="56" TextWrapping="Wrap" AcceptsReturn="True" VerticalScrollBarVisibility="Auto"
-                             ToolTip="DefaultEndpointsProtocol=https;AccountName=...;AccountKey=...;EndpointSuffix=core.windows.net" />
+                    <StackPanel Grid.Row="0" Grid.Column="1" Margin="0,0,0,10">
+                        <PasswordBox x:Name="SyncConnectionStringBox" Padding="6,4"
+                                     ToolTip="DefaultEndpointsProtocol=https;AccountName=...;AccountKey=...;EndpointSuffix=core.windows.net" />
+                        <TextBlock x:Name="SyncConfiguredAccountText" Margin="0,4,0,0" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource Brush.SecondaryText}" Visibility="Collapsed" />
+                    </StackPanel>
 
                     <TextBlock Grid.Row="1" Grid.Column="0" Margin="0,0,10,10" VerticalAlignment="Center"
                                Foreground="{DynamicResource Brush.PrimaryText}" Text="Container" />

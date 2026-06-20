@@ -26,6 +26,8 @@ public partial class SettingsWindow : Window
     private readonly AiRewriteService _rewriteService;
     private readonly CloudSyncService _syncService;
     private readonly bool _isLightTheme;
+    private readonly bool _hasExistingApiKey;
+    private readonly bool _hasExistingConnection;
 
     public SettingsWindow(
         AppSettings settings,
@@ -41,26 +43,32 @@ public partial class SettingsWindow : Window
         _syncService = syncService;
         _isLightTheme = isLightTheme;
 
-        // AI fields.
+        // AI fields. Secrets are never echoed back into the dialog; we only note when one is saved.
         AiEndpointBox.Text = settings.AiEndpoint ?? string.Empty;
         AiDeploymentBox.Text = settings.AiDeployment ?? string.Empty;
         AiTemperatureSlider.Value = settings.AiTemperature;
-        var existingKey = SecretProtector.Unprotect(settings.AiApiKeyProtected);
-        if (!string.IsNullOrEmpty(existingKey))
+        _hasExistingApiKey = !string.IsNullOrWhiteSpace(settings.AiApiKeyProtected);
+        if (_hasExistingApiKey)
         {
-            AiApiKeyBox.Password = existingKey;
+            AiKeyConfiguredText.Text = "A key is already saved. Leave blank to keep it, or type a new key to replace it.";
+            AiKeyConfiguredText.Visibility = Visibility.Visible;
         }
 
-        // Sync fields.
+        // Sync fields. The connection string is a secret, so it is never displayed; we only
+        // surface the derived account endpoint so the user can confirm what is configured.
         SyncContainerBox.Text = string.IsNullOrWhiteSpace(settings.SyncContainerName) ? "simplenotepad" : settings.SyncContainerName;
         SyncDeviceNameBox.Text = string.IsNullOrWhiteSpace(settings.DeviceName) ? Environment.MachineName : settings.DeviceName;
         SyncDeviceColorBox.Text = string.IsNullOrWhiteSpace(settings.DeviceColor)
             ? PickDefaultColor(settings.DeviceId ?? Environment.MachineName)
             : settings.DeviceColor;
-        var existingConnection = SecretProtector.Unprotect(settings.SyncConnectionStringProtected);
-        if (!string.IsNullOrEmpty(existingConnection))
+        _hasExistingConnection = !string.IsNullOrWhiteSpace(settings.SyncConnectionStringProtected);
+        if (_hasExistingConnection)
         {
-            SyncConnectionStringBox.Text = existingConnection;
+            var endpoint = DeriveAccountEndpoint(SecretProtector.Unprotect(settings.SyncConnectionStringProtected));
+            SyncConfiguredAccountText.Text = endpoint is null
+                ? "A connection string is already saved. Leave blank to keep it, or type a new one to replace it."
+                : $"Saved account: {endpoint}\nLeave blank to keep it, or type a new connection string to replace it.";
+            SyncConfiguredAccountText.Visibility = Visibility.Visible;
         }
 
         if (focus == SettingsSection.Sync)
@@ -84,9 +92,45 @@ public partial class SettingsWindow : Window
     private bool IsAiActive() =>
         !string.IsNullOrWhiteSpace(AiEndpointBox.Text)
         || !string.IsNullOrWhiteSpace(AiDeploymentBox.Text)
-        || !string.IsNullOrWhiteSpace(AiApiKeyBox.Password);
+        || !string.IsNullOrWhiteSpace(AiApiKeyBox.Password)
+        || _hasExistingApiKey;
 
-    private bool IsSyncActive() => !string.IsNullOrWhiteSpace(SyncConnectionStringBox.Text);
+    private bool IsSyncActive() =>
+        _hasExistingConnection || !string.IsNullOrWhiteSpace(SyncConnectionStringBox.Password);
+
+    private static string? DeriveAccountEndpoint(string? connectionString)
+    {
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            return null;
+        }
+
+        string? accountName = null;
+        foreach (var part in connectionString.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var separatorIndex = part.IndexOf('=');
+            if (separatorIndex <= 0)
+            {
+                continue;
+            }
+
+            var key = part[..separatorIndex].Trim();
+            var value = part[(separatorIndex + 1)..].Trim();
+            if (key.Equals("BlobEndpoint", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(value))
+            {
+                return value;
+            }
+
+            if (key.Equals("AccountName", StringComparison.OrdinalIgnoreCase))
+            {
+                accountName = value;
+            }
+        }
+
+        return string.IsNullOrWhiteSpace(accountName)
+            ? null
+            : $"https://{accountName}.blob.core.windows.net";
+    }
 
     private AppSettings BuildAiSnapshot()
     {
@@ -95,7 +139,9 @@ public partial class SettingsWindow : Window
             AiEndpoint = AiEndpointBox.Text.Trim(),
             AiDeployment = AiDeploymentBox.Text.Trim(),
             AiTemperature = AiTemperatureSlider.Value,
-            AiApiKeyProtected = SecretProtector.Protect(AiApiKeyBox.Password),
+            AiApiKeyProtected = string.IsNullOrWhiteSpace(AiApiKeyBox.Password)
+                ? _settings.AiApiKeyProtected
+                : SecretProtector.Protect(AiApiKeyBox.Password),
         };
     }
 
@@ -103,7 +149,9 @@ public partial class SettingsWindow : Window
     {
         return new AppSettings
         {
-            SyncConnectionStringProtected = SecretProtector.Protect(SyncConnectionStringBox.Text.Trim()),
+            SyncConnectionStringProtected = string.IsNullOrWhiteSpace(SyncConnectionStringBox.Password)
+                ? _settings.SyncConnectionStringProtected
+                : SecretProtector.Protect(SyncConnectionStringBox.Password.Trim()),
             SyncContainerName = SyncContainerBox.Text.Trim(),
             DeviceId = _settings.DeviceId ?? Guid.NewGuid().ToString("N"),
             DeviceName = SyncDeviceNameBox.Text.Trim(),
@@ -126,7 +174,7 @@ public partial class SettingsWindow : Window
             return false;
         }
 
-        if (string.IsNullOrWhiteSpace(AiApiKeyBox.Password))
+        if (string.IsNullOrWhiteSpace(AiApiKeyBox.Password) && !_hasExistingApiKey)
         {
             error = "AI API key is required.";
             return false;
@@ -291,7 +339,10 @@ public partial class SettingsWindow : Window
             _settings.AiEndpoint = AiEndpointBox.Text.Trim();
             _settings.AiDeployment = AiDeploymentBox.Text.Trim();
             _settings.AiTemperature = AiTemperatureSlider.Value;
-            _settings.AiApiKeyProtected = SecretProtector.Protect(AiApiKeyBox.Password);
+            if (!string.IsNullOrWhiteSpace(AiApiKeyBox.Password))
+            {
+                _settings.AiApiKeyProtected = SecretProtector.Protect(AiApiKeyBox.Password);
+            }
         }
         else
         {
@@ -311,7 +362,10 @@ public partial class SettingsWindow : Window
                 return;
             }
 
-            _settings.SyncConnectionStringProtected = SecretProtector.Protect(SyncConnectionStringBox.Text.Trim());
+            if (!string.IsNullOrWhiteSpace(SyncConnectionStringBox.Password))
+            {
+                _settings.SyncConnectionStringProtected = SecretProtector.Protect(SyncConnectionStringBox.Password.Trim());
+            }
             _settings.SyncContainerName = SyncContainerBox.Text.Trim();
             _settings.DeviceId ??= Guid.NewGuid().ToString("N");
             _settings.DeviceName = SyncDeviceNameBox.Text.Trim();
