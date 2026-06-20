@@ -1,0 +1,90 @@
+name: Build and Release
+
+on:
+  push:
+    branches: [ master, main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Compute version
+        id: ver
+        shell: pwsh
+        run: |
+          $version = "1.0.${{ github.run_number }}"
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "assembly=$version.0" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Host "Building version $version"
+
+      - name: Restore
+        run: dotnet restore .\SimpleNotepad\SimpleNotepad.csproj
+
+      - name: Publish single-file exe
+        run: >
+          dotnet publish .\SimpleNotepad\SimpleNotepad.csproj
+          -c Release -r win-x64 --self-contained true
+          -p:PublishSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:Version=${{ steps.ver.outputs.version }}
+          -p:AssemblyVersion=${{ steps.ver.outputs.assembly }}
+          -p:FileVersion=${{ steps.ver.outputs.assembly }}
+          -o .\artifacts\exe
+
+      - name: Publish app folder (for installer)
+        run: >
+          dotnet publish .\SimpleNotepad\SimpleNotepad.csproj
+          -c Release -r win-x64 --self-contained true
+          -p:PublishSingleFile=false
+          -p:Version=${{ steps.ver.outputs.version }}
+          -p:AssemblyVersion=${{ steps.ver.outputs.assembly }}
+          -p:FileVersion=${{ steps.ver.outputs.assembly }}
+          -o .\artifacts\app-folder
+
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+
+      - name: Build installer
+        run: >
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          /DAppVersion=${{ steps.ver.outputs.version }}
+          .\installer\SimpleNotepad.iss
+
+      - name: Stage release assets
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path .\artifacts\release | Out-Null
+          Copy-Item .\artifacts\exe\SimpleNotepad.exe .\artifacts\release\SimpleNotepad.exe -Force
+          Copy-Item .\artifacts\installer\*.exe .\artifacts\release\ -Force
+          Get-ChildItem .\artifacts\release
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.ver.outputs.version }}
+          name: Simple Notepad v${{ steps.ver.outputs.version }}
+          body: |
+            Automated release built from commit ${{ github.sha }}.
+
+            - `SimpleNotepad.exe` — portable self-contained app (no .NET install required).
+            - `SimpleNotepad-Setup-${{ steps.ver.outputs.version }}.exe` — installer with uninstall + in-place upgrade and optional AI/sync credential setup.
+          files: |
+            artifacts/release/SimpleNotepad.exe
+            artifacts/release/SimpleNotepad-Setup-${{ steps.ver.outputs.version }}.exe
