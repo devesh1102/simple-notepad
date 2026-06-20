@@ -29,4 +29,9 @@
     <SolidColorBrush x:Key="Brush.EditorLineNumber" Color="#858585" />
     <SolidColorBrush x:Key="Brush.EditorSelection" Color="#264F78" />
 
+    <SolidColorBrush x:Key="Brush.ScrollBarTrack" Color="#1E1E1E" />
+    <SolidColorBrush x:Key="Brush.ScrollBarThumb" Color="#424248" />
+    <SolidColorBrush x:Key="Brush.ScrollBarThumbHover" Color="#5A5A60" />
+    <SolidColorBrush x:Key="Brush.ScrollBarThumbPressed" Color="#6E6E76" />
+
 </ResourceDictionary>

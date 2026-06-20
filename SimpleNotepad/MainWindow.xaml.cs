@@ -1,6 +1,7 @@
 ﻿using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using System.Windows;
@@ -8,6 +9,7 @@ using System.Windows.Controls;
 using System.ComponentModel;
 using System.Windows.Data;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Media;
 using ICSharpCode.AvalonEdit.Document;
 using ICSharpCode.AvalonEdit.Folding;
@@ -127,11 +129,38 @@ public partial class MainWindow : Window
         ApplyEditorTheme(isLight);
         JsonSyntaxColorizer.ApplyThemeColors(isLight);
         Editor.TextArea.TextView.Redraw();
+        ApplyTitleBarTheme(isLight);
 
         if (ThemeButton is not null)
         {
             ThemeButton.Content = $"Theme: {normalized}";
         }
+    }
+
+    [DllImport("dwmapi.dll", PreserveSig = true)]
+    private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
+
+    // DWMWA_USE_IMMERSIVE_DARK_MODE: paints the Win32 title bar dark to match the app theme.
+    private const int DwmwaUseImmersiveDarkMode = 20;
+
+    private void ApplyTitleBarTheme(bool isLight)
+    {
+        var hwnd = new WindowInteropHelper(this).Handle;
+        if (hwnd == IntPtr.Zero)
+        {
+            // The native handle is not created yet (e.g. during construction);
+            // OnSourceInitialized will re-apply once it exists.
+            return;
+        }
+
+        var useDark = isLight ? 0 : 1;
+        DwmSetWindowAttribute(hwnd, DwmwaUseImmersiveDarkMode, ref useDark, sizeof(int));
+    }
+
+    protected override void OnSourceInitialized(EventArgs e)
+    {
+        base.OnSourceInitialized(e);
+        ApplyTitleBarTheme(_currentThemeIsLight);
     }
 
     private static bool ResolveEffectiveThemeIsLight(string theme)

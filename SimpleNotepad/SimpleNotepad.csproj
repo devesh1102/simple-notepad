@@ -15,7 +15,12 @@
     <Company>Simple Notepad</Company>
     <Authors>Simple Notepad</Authors>
     <Description>Lightweight Windows notepad with sessions, find/replace, JSON tooling, and linked PowerShell.</Description>
+    <ApplicationIcon>app.ico</ApplicationIcon>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Resource Include="app.ico" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="AvalonEdit" Version="6.3.1.120" />

@@ -1,8 +1,13 @@
 # Simple Notepad
 
+<img src="SimpleNotepad/app.png" alt="Simple Notepad icon" width="96" align="left" />
+
 A lightweight, fast‑starting notepad for Windows. Native **WPF + .NET 8**, built around
 **sessions** (like chat threads) instead of files — every note autosaves, lives in a
 left‑hand list, and quietly expires after 7 days of inactivity unless you pin it.
+
+<br clear="left" />
+
 
 It also includes the things a notepad usually makes you reach for another tool to do:
 inline **find & replace**, automatic **JSON formatting with syntax colors**, an optional

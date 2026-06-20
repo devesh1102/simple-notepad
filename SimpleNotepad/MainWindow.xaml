@@ -7,6 +7,7 @@
         xmlns:local="clr-namespace:SimpleNotepad"
         mc:Ignorable="d"
         Title="Simple Notepad"
+        Icon="app.ico"
         Height="720"
         Width="1100"
         MinHeight="480"
