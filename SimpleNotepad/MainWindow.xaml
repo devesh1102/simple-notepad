@@ -210,40 +210,90 @@
                             <MenuItem Header="Export…" Click="ExportSession_Click" />
                         </ContextMenu>
                     </ListBox.ContextMenu>
+                    <ListBox.ItemContainerStyle>
+                        <Style TargetType="ListBoxItem">
+                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                            <Setter Property="Padding" Value="0" />
+                            <Setter Property="Margin" Value="0,3" />
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="ListBoxItem">
+                                        <Border x:Name="CardRoot"
+                                                Background="Transparent"
+                                                BorderBrush="Transparent"
+                                                BorderThickness="1"
+                                                CornerRadius="8">
+                                            <ContentPresenter />
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="CardRoot" Property="Background" Value="{DynamicResource Brush.ListHover}" />
+                                            </Trigger>
+                                            <Trigger Property="IsSelected" Value="True">
+                                                <Setter TargetName="CardRoot" Property="Background" Value="{DynamicResource Brush.ListSelected}" />
+                                                <Setter TargetName="CardRoot" Property="BorderBrush" Value="{DynamicResource Brush.Accent}" />
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </ListBox.ItemContainerStyle>
                     <ListBox.ItemTemplate>
                         <DataTemplate>
-                            <Grid Margin="4">
+                            <Grid Margin="10,8">
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="3" />
+                                    <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
-                                <Border Grid.Column="0" Width="3" CornerRadius="2"
-                                        Margin="0,0,6,0"
+                                <Border Grid.Column="0"
+                                        Width="3"
+                                        CornerRadius="2"
+                                        Margin="0,1,8,1"
+                                        Visibility="{Binding OriginVisibility}"
                                         Background="{Binding AccentBrush}" />
                                 <StackPanel Grid.Column="1">
-                                    <TextBlock Text="{Binding Title}"
-                                               FontWeight="SemiBold"
-                                               Foreground="{DynamicResource Brush.PrimaryText}"
-                                               TextTrimming="CharacterEllipsis" />
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0"
+                                                   Text="{Binding Title}"
+                                                   FontSize="14"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource Brush.PrimaryText}"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   VerticalAlignment="Center" />
+                                        <Border Grid.Column="1"
+                                                Margin="8,0,0,0"
+                                                Padding="7,1"
+                                                CornerRadius="9"
+                                                VerticalAlignment="Center"
+                                                Background="{DynamicResource Brush.ControlBackground}">
+                                            <TextBlock Text="{Binding ExpiryText}"
+                                                       FontSize="10"
+                                                       Foreground="{DynamicResource Brush.SecondaryText}" />
+                                        </Border>
+                                    </Grid>
                                     <TextBlock Margin="0,3,0,0"
                                                Text="{Binding OriginLabel}"
                                                Visibility="{Binding OriginVisibility}"
-                                               FontSize="12"
+                                               FontSize="11"
                                                Foreground="{Binding AccentBrush}"
                                                TextTrimming="CharacterEllipsis" />
-                                    <TextBlock Margin="0,3,0,0"
-                                               Text="{Binding ExpiryText}"
-                                               FontSize="12"
-                                               Foreground="{DynamicResource Brush.SecondaryText}" />
-                                    <TextBlock Margin="0,3,0,0"
-                                               Text="{Binding LastModifiedText}"
-                                               FontSize="12"
-                                               Foreground="{DynamicResource Brush.SecondaryText}" />
-                                    <TextBlock Margin="0,3,0,0"
+                                    <TextBlock Margin="0,5,0,0"
                                                Text="{Binding Preview}"
                                                FontSize="12"
-                                               Foreground="{DynamicResource Brush.SecondaryText}"
-                                               TextTrimming="CharacterEllipsis" />
+                                               MaxHeight="34"
+                                               TextWrapping="Wrap"
+                                               TextTrimming="CharacterEllipsis"
+                                               Foreground="{DynamicResource Brush.SecondaryText}" />
+                                    <TextBlock Margin="0,5,0,0"
+                                               Text="{Binding LastModifiedText}"
+                                               FontSize="10"
+                                               Opacity="0.75"
+                                               Foreground="{DynamicResource Brush.SecondaryText}" />
                                 </StackPanel>
                             </Grid>
                         </DataTemplate>

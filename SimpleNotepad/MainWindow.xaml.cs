@@ -62,6 +62,9 @@ public partial class MainWindow : Window
     private int _selectionRequestId;
     private readonly SemaphoreSlim _selectionSemaphore = new(1, 1);
     private CancellationTokenSource? _autosaveCts;
+    private readonly HashSet<string> _autoTitledSessionIds = new(StringComparer.Ordinal);
+    private bool _autoTitleInFlight;
+    private const int AutoTitleMinWords = 4;
     private static readonly TimeSpan AutosaveDelay = TimeSpan.FromMilliseconds(1500);
     private const double MinimumEditorFontSize = 8;
     private const double MaximumEditorFontSize = 48;
@@ -808,6 +811,7 @@ public partial class MainWindow : Window
             }
 
             await SaveCurrentSessionWithLockAsync(refreshSessions: true, cancellationToken);
+            await MaybeAutoGenerateTitleAsync(sessionId);
         }
         catch (OperationCanceledException)
         {
@@ -816,6 +820,71 @@ public partial class MainWindow : Window
         {
             ShowError("Simple Notepad could not autosave the current session.", exception);
         }
+    }
+
+    private async Task MaybeAutoGenerateTitleAsync(string sessionId)
+    {
+        if (_currentSession is null ||
+            _currentSession.Id != sessionId ||
+            _currentSession.IsRemote ||
+            _autoTitleInFlight ||
+            _autoTitledSessionIds.Contains(sessionId) ||
+            !_rewriteService.IsConfigured(_settings))
+        {
+            return;
+        }
+
+        if (!IsDefaultTitle(SessionTitleBox.Text))
+        {
+            return;
+        }
+
+        var content = Editor.Text;
+        if (CountWords(content) < AutoTitleMinWords)
+        {
+            return;
+        }
+
+        _autoTitleInFlight = true;
+        _autoTitledSessionIds.Add(sessionId);
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            var title = await _rewriteService.GenerateTitleAsync(_settings, content, cts.Token);
+
+            if (!string.IsNullOrWhiteSpace(title) &&
+                _currentSession?.Id == sessionId &&
+                IsDefaultTitle(SessionTitleBox.Text))
+            {
+                SessionTitleBox.Text = title;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            _autoTitledSessionIds.Remove(sessionId);
+        }
+        catch (Exception exception)
+        {
+            _autoTitledSessionIds.Remove(sessionId);
+            AppLogger.Error("Automatic title generation failed.", exception);
+        }
+        finally
+        {
+            _autoTitleInFlight = false;
+        }
+    }
+
+    private static bool IsDefaultTitle(string? title)
+    {
+        var trimmed = (title ?? string.Empty).Trim();
+        return trimmed.Length == 0 || string.Equals(trimmed, "Untitled", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static int CountWords(string text)
+    {
+        return string.IsNullOrWhiteSpace(text)
+            ? 0
+            : text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Length;
     }
 
     private async Task SaveCurrentSessionWithLockAsync(bool refreshSessions, CancellationToken cancellationToken = default)
