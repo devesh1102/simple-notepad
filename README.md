@@ -24,7 +24,10 @@ inline **find & replace**, automatic **JSON formatting with syntax colors**, an 
 - **Find & Replace** — inline bar with match navigation (`Ctrl+F`).
 - **JSON tooling** — paste JSON and it's detected and pretty‑printed with **syntax coloring**.
   Format on demand with `Ctrl+Shift+F` (selection or whole document).
-- **Linked PowerShell** — run linked PowerShell snippets from your notes.
+- **Linked PowerShell** — run linked PowerShell snippets from your notes. Sending text to PowerShell
+  always shows a **confirmation dialog with the exact command** first (with a stronger warning for the
+  elevated *Admin* mode). Because this runs real commands, only send text you wrote or fully trust —
+  never paste‑and‑run code from emails, websites, or chats.
 - **AI Rewrite** *(optional)* — select text, hit **Rewrite**, preview the suggestion, tweak the
   instruction, regenerate, and replace only if you're happy. Can also **generate a title** for an
   untitled session. Powered by **Azure OpenAI**; your API key is encrypted at rest with Windows DPAPI.

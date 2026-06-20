@@ -45,7 +45,7 @@ public sealed class AppSettingsService
     {
         if (!File.Exists(_settingsPath))
         {
-            return new AppSettings();
+            return await TryLoadBackupAsync(cancellationToken) ?? new AppSettings();
         }
 
         try
@@ -55,15 +55,23 @@ public sealed class AppSettingsService
         }
         catch (JsonException)
         {
-            return new AppSettings();
+            // Settings are corrupt: preserve the bad file for diagnostics and try the last-good backup
+            // rather than silently discarding all settings (and the protected secrets within).
+            QuarantineFile(_settingsPath);
+            return await TryLoadBackupAsync(cancellationToken) ?? new AppSettings();
+        }
+        catch (DecoderFallbackException)
+        {
+            QuarantineFile(_settingsPath);
+            return await TryLoadBackupAsync(cancellationToken) ?? new AppSettings();
         }
         catch (IOException)
         {
-            return new AppSettings();
+            return await TryLoadBackupAsync(cancellationToken) ?? new AppSettings();
         }
         catch (UnauthorizedAccessException)
         {
-            return new AppSettings();
+            return await TryLoadBackupAsync(cancellationToken) ?? new AppSettings();
         }
     }
 
@@ -88,7 +96,8 @@ public sealed class AppSettingsService
 
                 if (File.Exists(_settingsPath))
                 {
-                    File.Replace(tempPath, _settingsPath, null, ignoreMetadataErrors: true);
+                    // Atomically swap in the new file while keeping the previous good copy as a backup.
+                    File.Replace(tempPath, _settingsPath, BackupPath, ignoreMetadataErrors: true);
                     return;
                 }
 
@@ -107,6 +116,66 @@ public sealed class AppSettingsService
         finally
         {
             _saveLock.Release();
+        }
+    }
+
+    private string BackupPath => _settingsPath + ".bak";
+
+    private async Task<AppSettings?> TryLoadBackupAsync(CancellationToken cancellationToken)
+    {
+        if (!File.Exists(BackupPath))
+        {
+            return null;
+        }
+
+        try
+        {
+            await using var stream = File.OpenRead(BackupPath);
+            return await JsonSerializer.DeserializeAsync<AppSettings>(stream, JsonOptions, cancellationToken);
+        }
+        catch (JsonException)
+        {
+            QuarantineFile(BackupPath);
+            return null;
+        }
+        catch (DecoderFallbackException)
+        {
+            QuarantineFile(BackupPath);
+            return null;
+        }
+        catch (IOException)
+        {
+            return null;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
+    private static void QuarantineFile(string path)
+    {
+        try
+        {
+            if (!File.Exists(path))
+            {
+                return;
+            }
+
+            var directory = Path.GetDirectoryName(path);
+            if (string.IsNullOrWhiteSpace(directory))
+            {
+                return;
+            }
+
+            var quarantinePath = Path.Combine(directory, $"{Path.GetFileName(path)}.corrupt.{Guid.NewGuid():N}");
+            File.Move(path, quarantinePath);
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
         }
     }
 

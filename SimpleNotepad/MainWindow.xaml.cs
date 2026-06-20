@@ -856,67 +856,74 @@ public partial class MainWindow : Window
 
     private async void MainWindow_PreviewKeyDown(object sender, KeyEventArgs e)
     {
-        var hasControl = (Keyboard.Modifiers & ModifierKeys.Control) != 0;
-        var hasShift = (Keyboard.Modifiers & ModifierKeys.Shift) != 0;
-
-        if (e.Key == Key.Escape)
+        try
         {
+            var hasControl = (Keyboard.Modifiers & ModifierKeys.Control) != 0;
+            var hasShift = (Keyboard.Modifiers & ModifierKeys.Shift) != 0;
+
+            if (e.Key == Key.Escape)
+            {
+                e.Handled = true;
+                FindReplaceBar.Visibility = Visibility.Collapsed;
+                Editor.Focus();
+                return;
+            }
+
+            if (!hasControl)
+            {
+                return;
+            }
+
             e.Handled = true;
-            FindReplaceBar.Visibility = Visibility.Collapsed;
-            Editor.Focus();
-            return;
+
+            switch (e.Key)
+            {
+                case Key.F when hasShift:
+                    FormatJsonSelectionOrDocument();
+                    return;
+
+                case Key.F:
+                    OpenFindReplaceBar();
+                    return;
+
+                case Key.N:
+                    await CreateNewSessionWithLockAsync();
+                    return;
+
+                case Key.O:
+                    await OpenFileAsSessionAsync();
+                    return;
+
+                case Key.S when hasShift:
+                    await SaveCurrentSessionAsAsync();
+                    return;
+
+                case Key.S:
+                    await SaveCurrentSessionFromShortcutAsync();
+                    return;
+
+                case Key.Add:
+                case Key.OemPlus:
+                    ChangeEditorFontSize(EditorFontSizeStep);
+                    return;
+
+                case Key.Subtract:
+                case Key.OemMinus:
+                    ChangeEditorFontSize(-EditorFontSizeStep);
+                    return;
+
+                case Key.D0 when hasControl:
+                    ResetEditorFontSize();
+                    return;
+
+                default:
+                    e.Handled = false;
+                    return;
+            }
         }
-
-        if (!hasControl)
+        catch (Exception exception)
         {
-            return;
-        }
-
-        e.Handled = true;
-
-        switch (e.Key)
-        {
-            case Key.F when hasShift:
-                FormatJsonSelectionOrDocument();
-                return;
-
-            case Key.F:
-                OpenFindReplaceBar();
-                return;
-
-            case Key.N:
-                await CreateNewSessionWithLockAsync();
-                return;
-
-            case Key.O:
-                await OpenFileAsSessionAsync();
-                return;
-
-            case Key.S when hasShift:
-                await SaveCurrentSessionAsAsync();
-                return;
-
-            case Key.S:
-                await SaveCurrentSessionFromShortcutAsync();
-                return;
-
-            case Key.Add:
-            case Key.OemPlus:
-                ChangeEditorFontSize(EditorFontSizeStep);
-                return;
-
-            case Key.Subtract:
-            case Key.OemMinus:
-                ChangeEditorFontSize(-EditorFontSizeStep);
-                return;
-
-            case Key.D0 when hasControl:
-                ResetEditorFontSize();
-                return;
-
-            default:
-                e.Handled = false;
-                return;
+            ShowError("Simple Notepad could not complete that action.", exception);
         }
     }
 
@@ -1041,25 +1048,32 @@ public partial class MainWindow : Window
 
     private async void Editor_PreviewDrop(object sender, System.Windows.DragEventArgs e)
     {
-        if (!e.Data.GetDataPresent(System.Windows.DataFormats.FileDrop))
+        try
         {
-            return;
+            if (!e.Data.GetDataPresent(System.Windows.DataFormats.FileDrop))
+            {
+                return;
+            }
+
+            e.Handled = true;
+
+            if (e.Data.GetData(System.Windows.DataFormats.FileDrop) is not string[] paths)
+            {
+                return;
+            }
+
+            var files = paths.Where(File.Exists).ToList();
+            if (files.Count == 0)
+            {
+                return;
+            }
+
+            await ImportFilesAsSessionsAsync(files);
         }
-
-        e.Handled = true;
-
-        if (e.Data.GetData(System.Windows.DataFormats.FileDrop) is not string[] paths)
+        catch (Exception exception)
         {
-            return;
+            ShowError("Simple Notepad could not open the dropped files.", exception);
         }
-
-        var files = paths.Where(File.Exists).ToList();
-        if (files.Count == 0)
-        {
-            return;
-        }
-
-        await ImportFilesAsSessionsAsync(files);
     }
 
     private async void ExportSession_Click(object sender, RoutedEventArgs e)
@@ -1152,7 +1166,14 @@ public partial class MainWindow : Window
 
     private async void OpenJsonInVsCodeButton_Click(object sender, RoutedEventArgs e)
     {
-        await OpenJsonInVsCodeAsync();
+        try
+        {
+            await OpenJsonInVsCodeAsync();
+        }
+        catch (Exception exception)
+        {
+            ShowError("Simple Notepad could not open the JSON in VS Code.", exception);
+        }
     }
 
     private void Editor_ContextMenuOpening(object sender, ContextMenuEventArgs e)
@@ -1681,16 +1702,51 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (!ConfirmPowerShellExecution(target, command))
+        {
+            return;
+        }
+
         try
         {
+            AppLogger.Info(
+                $"Running selected text in {(target == LinkedPowerShellTarget.Admin ? "ADMIN" : "normal")} linked PowerShell ({command.Length} chars).");
             await _linkedPowerShell.SendCommandAsync(target, command);
             UpdateLinkedPowerShellState();
         }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidOperationException or Win32Exception)
+        catch (Exception exception)
         {
+            AppLogger.Error("Could not send command to linked PowerShell.", exception);
             ShowLinkedPowerShellMessage($"Simple Notepad could not send the command to linked PowerShell.\n\n{exception.Message}");
             UpdateLinkedPowerShellState();
         }
+    }
+
+    private static bool ConfirmPowerShellExecution(LinkedPowerShellTarget target, string command)
+    {
+        var isAdmin = target == LinkedPowerShellTarget.Admin;
+
+        var preview = command.Trim();
+        const int maxPreview = 1000;
+        if (preview.Length > maxPreview)
+        {
+            preview = preview[..maxPreview] + "\n…(truncated)";
+        }
+
+        var header = isAdmin
+            ? "You are about to run the selected text as an ADMINISTRATOR (elevated) PowerShell command. "
+              + "This can make system-wide changes.\n\nOnly run commands you wrote or fully trust — never paste-and-run code from emails, websites, or chats."
+            : "You are about to run the selected text as a PowerShell command.\n\n"
+              + "Only run commands you wrote or fully trust — never paste-and-run code from emails, websites, or chats.";
+
+        var result = MessageBox.Show(
+            $"{header}\n\nCommand:\n{preview}\n\nRun this command?",
+            isAdmin ? "Run elevated PowerShell command?" : "Run PowerShell command?",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning,
+            MessageBoxResult.No);
+
+        return result == MessageBoxResult.Yes;
     }
 
     private void RestartLinkedPowerShell(LinkedPowerShellTarget target)
@@ -2083,8 +2139,6 @@ public partial class MainWindow : Window
                     }
                 }
 
-                await _sessionStorage.DeleteSessionAsync(currentItem.Session);
-
                 if (isDeletingCurrent)
                 {
                     _currentSession = null;
@@ -2115,6 +2169,11 @@ public partial class MainWindow : Window
                 _hasUnsavedIndex = true;
 
                 await SaveIndexIfNeededAsync();
+
+                // Remove the content only after the index is durably updated. If this throws, the
+                // worst case is an orphaned content file (which expires on its own) rather than an
+                // index entry that points at a missing file.
+                await _sessionStorage.DeleteSessionAsync(currentItem.Session);
 
                 if (_sessions.Count == 0)
                 {

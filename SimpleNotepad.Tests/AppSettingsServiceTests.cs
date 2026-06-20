@@ -82,6 +82,25 @@ public sealed class AppSettingsServiceTests : IDisposable
         Assert.Equal("Dark", loaded.Theme);
     }
 
+    [Fact]
+    public async Task Load_CorruptFile_RecoversFromBackup()
+    {
+        var service = new AppSettingsService(_settingsPath);
+
+        // First save creates the file; second save rotates the previous good copy into the .bak.
+        await service.SaveAsync(new AppSettings { Theme = "Light", DeviceName = "good-backup" });
+        await service.SaveAsync(new AppSettings { Theme = "Light", DeviceName = "newer-good" });
+
+        // Corrupt the primary settings file; the last-good backup should still be recoverable.
+        await File.WriteAllTextAsync(_settingsPath, "{ not valid json at all");
+
+        var loaded = await service.LoadAsync();
+
+        Assert.Equal("Light", loaded.Theme);
+        Assert.Equal("good-backup", loaded.DeviceName);
+        Assert.True(File.Exists(_settingsPath + ".bak"));
+    }
+
     public void Dispose()
     {
         try
