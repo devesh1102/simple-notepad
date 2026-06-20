@@ -61,7 +61,14 @@ Grab `SimpleNotepad.exe` from the [latest release](../../releases/latest) and ru
 It's a **self‑contained** build — no .NET install required. Windows SmartScreen may warn on an
 unsigned exe; choose **More info → Run anyway**.
 
-### Option B — Build from source
+### Option B — Download the installer (Start‑menu entry + uninstall + auto‑upgrade)
+Grab `SimpleNotepad-Setup-<version>.exe` from the [latest release](../../releases/latest). It installs
+to *Program Files*, adds Start‑menu/Desktop shortcuts, and registers an entry under
+**Apps & features** so you can uninstall cleanly. Running a newer setup over an existing install
+upgrades it **in place** (it closes a running instance first). The installer can optionally collect
+your AI/sync credentials — see [Provisioning credentials](#provisioning-credentials-through-the-installer).
+
+### Option C — Build from source
 Requires the [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0).
 
 ```powershell
@@ -105,17 +112,27 @@ scoped to your Windows user account.
 
 ## Optional setup
 
+All AI and sync configuration lives in one place: click the **⚙ Settings** button (top of the
+sessions sidebar) to open the unified settings dialog. Leave a section blank to keep that feature
+turned off. Secrets are encrypted at rest with Windows DPAPI, scoped to your Windows user account.
+
 ### AI Rewrite (Azure OpenAI)
-Open **AI…** in the toolbar and provide your Azure OpenAI **endpoint** (HTTPS), **deployment** name,
-and **API key**. The key is encrypted at rest. Select text and click **Rewrite** to preview/replace.
+In **⚙ Settings → AI Rewrite**, provide your Azure OpenAI **endpoint** (HTTPS), **deployment** name,
+and **API key**. Use **Test AI connection** to verify, then save. Select text and click **Rewrite**
+to preview/replace.
 
 ### Cloud sync (Azure Blob)
-Open the sync **⚙** settings and provide a storage **connection string**, a **container** name, and a
-**device name / color**. Click **Test connection**, save, then **Sync**. Each device owns the notes it
-creates; other devices appear as read‑only mirrors you can duplicate to edit.
+In **⚙ Settings → Cloud Sync**, provide a storage **connection string**, a **container** name, and a
+**device name / color**. Click **Test sync connection**, save, then **Sync**. Each device owns the
+notes it creates; other devices appear as read‑only mirrors you can duplicate to edit.
 
 > Note: explicitly deleting a note removes it everywhere; letting a note expire locally (7‑day rule)
 > does **not** delete it from the cloud or from your other devices.
+
+### Provisioning credentials through the installer
+The installer can optionally collect your AI and sync credentials during setup. They are written to a
+short‑lived plaintext file under `%PROGRAMDATA%\SimpleNotepad`, which the app imports on first run —
+re‑encrypting the secrets under your user account (DPAPI) and then deleting the plaintext file.
 
 ---
 
