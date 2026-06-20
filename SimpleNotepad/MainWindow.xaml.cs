@@ -1215,7 +1215,7 @@ public partial class MainWindow : Window
 
     private void OpenSettings(SettingsSection focus)
     {
-        var dialog = new SettingsWindow(_settings, _rewriteService, _syncService, focus) { Owner = this };
+        var dialog = new SettingsWindow(_settings, _rewriteService, _syncService, focus, _currentThemeIsLight) { Owner = this };
         if (dialog.ShowDialog() == true)
         {
             _ = PersistSettingsAsync();

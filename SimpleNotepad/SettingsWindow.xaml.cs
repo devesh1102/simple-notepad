@@ -25,18 +25,21 @@ public partial class SettingsWindow : Window
     private readonly AppSettings _settings;
     private readonly AiRewriteService _rewriteService;
     private readonly CloudSyncService _syncService;
+    private readonly bool _isLightTheme;
 
     public SettingsWindow(
         AppSettings settings,
         AiRewriteService rewriteService,
         CloudSyncService syncService,
-        SettingsSection focus = SettingsSection.Ai)
+        SettingsSection focus = SettingsSection.Ai,
+        bool isLightTheme = false)
     {
         InitializeComponent();
 
         _settings = settings;
         _rewriteService = rewriteService;
         _syncService = syncService;
+        _isLightTheme = isLightTheme;
 
         // AI fields.
         AiEndpointBox.Text = settings.AiEndpoint ?? string.Empty;
@@ -64,6 +67,12 @@ public partial class SettingsWindow : Window
         {
             Loaded += (_, _) => SyncConnectionStringBox.BringIntoView();
         }
+    }
+
+    protected override void OnSourceInitialized(EventArgs e)
+    {
+        base.OnSourceInitialized(e);
+        TitleBarThemer.Apply(this, _isLightTheme);
     }
 
     private static string PickDefaultColor(string seed)

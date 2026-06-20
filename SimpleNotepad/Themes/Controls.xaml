@@ -95,4 +95,97 @@
         </Style.Triggers>
     </Style>
 
+    <!--
+        Themed input controls so secondary windows (e.g. Settings) match the active theme.
+        MainWindow defines its own local copies which take precedence there; these implicit
+        styles apply app-wide wherever no closer style exists.
+    -->
+    <Style TargetType="{x:Type Button}">
+        <Setter Property="Background" Value="{DynamicResource Brush.ControlBackground}" />
+        <Setter Property="Foreground" Value="{DynamicResource Brush.PrimaryText}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Brush.ControlBorder}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Padding" Value="8,4" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="3"
+                            Padding="{TemplateBinding Padding}">
+                        <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                          VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter Property="Background" Value="{DynamicResource Brush.ControlHover}" />
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter Property="Background" Value="{DynamicResource Brush.ControlPressed}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.5" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style TargetType="{x:Type TextBox}">
+        <Setter Property="Background" Value="{DynamicResource Brush.ControlBackground}" />
+        <Setter Property="Foreground" Value="{DynamicResource Brush.PrimaryText}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Brush.ControlBorder}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CaretBrush" Value="{DynamicResource Brush.PrimaryText}" />
+        <Setter Property="SelectionBrush" Value="{DynamicResource Brush.SelectionBrush}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="TextBox">
+                    <Border Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="3">
+                        <ScrollViewer x:Name="PART_ContentHost"
+                                      Margin="{TemplateBinding Padding}" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsFocused" Value="True">
+                            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Accent}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style TargetType="{x:Type PasswordBox}">
+        <Setter Property="Background" Value="{DynamicResource Brush.ControlBackground}" />
+        <Setter Property="Foreground" Value="{DynamicResource Brush.PrimaryText}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Brush.ControlBorder}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CaretBrush" Value="{DynamicResource Brush.PrimaryText}" />
+        <Setter Property="SelectionBrush" Value="{DynamicResource Brush.SelectionBrush}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="PasswordBox">
+                    <Border Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="3">
+                        <ScrollViewer x:Name="PART_ContentHost"
+                                      Margin="{TemplateBinding Padding}" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsFocused" Value="True">
+                            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Accent}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
 </ResourceDictionary>
