@@ -37,17 +37,6 @@ jobs:
       - name: Restore
         run: dotnet restore .\SimpleNotepad\SimpleNotepad.csproj
 
-      - name: Publish single-file exe
-        run: >
-          dotnet publish .\SimpleNotepad\SimpleNotepad.csproj
-          -c Release -r win-x64 --self-contained true
-          -p:PublishSingleFile=true
-          -p:IncludeNativeLibrariesForSelfExtract=true
-          -p:Version=${{ steps.ver.outputs.version }}
-          -p:AssemblyVersion=${{ steps.ver.outputs.assembly }}
-          -p:FileVersion=${{ steps.ver.outputs.assembly }}
-          -o .\artifacts\exe
-
       - name: Publish app folder (for installer)
         run: >
           dotnet publish .\SimpleNotepad\SimpleNotepad.csproj
@@ -71,7 +60,6 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path .\artifacts\release | Out-Null
-          Copy-Item .\artifacts\exe\SimpleNotepad.exe .\artifacts\release\SimpleNotepad.exe -Force
           Copy-Item .\artifacts\installer\*.exe .\artifacts\release\ -Force
           Get-ChildItem .\artifacts\release
 
@@ -83,8 +71,6 @@ jobs:
           body: |
             Automated release built from commit ${{ github.sha }}.
 
-            - `SimpleNotepad.exe` — portable self-contained app (no .NET install required).
-            - `SimpleNotepad-Setup-${{ steps.ver.outputs.version }}.exe` — installer with uninstall + in-place upgrade and optional AI/sync credential setup.
+            - `SimpleNotepad-Setup-${{ steps.ver.outputs.version }}.exe` — installer with Start-menu/Desktop shortcuts, clean uninstall, in-place upgrade, and optional AI/sync credential setup. No .NET install required.
           files: |
-            artifacts/release/SimpleNotepad.exe
             artifacts/release/SimpleNotepad-Setup-${{ steps.ver.outputs.version }}.exe

@@ -56,19 +56,16 @@ inline **find & replace**, automatic **JSON formatting with syntax colors**, an 
 
 ## Install / run
 
-### Option A — Download the prebuilt EXE (easiest)
-Grab `SimpleNotepad.exe` from the [latest release](../../releases/latest) and run it.
-It's a **self‑contained** build — no .NET install required. Windows SmartScreen may warn on an
-unsigned exe; choose **More info → Run anyway**.
+### Option A — Download the installer (recommended)
+Grab `SimpleNotepad-Setup-<version>.exe` from the [latest release](../../releases/latest) and run it.
+It's **self‑contained** (no .NET install required), installs to *Program Files*, adds Start‑menu/Desktop
+shortcuts, and registers an entry under **Apps & features** so you can uninstall cleanly. Running a newer
+setup over an existing install upgrades it **in place** (it closes a running instance first). The installer
+can optionally collect your AI/sync credentials — see
+[Provisioning credentials](#provisioning-credentials-through-the-installer).
+Windows SmartScreen may warn on an unsigned setup; choose **More info → Run anyway**.
 
-### Option B — Download the installer (Start‑menu entry + uninstall + auto‑upgrade)
-Grab `SimpleNotepad-Setup-<version>.exe` from the [latest release](../../releases/latest). It installs
-to *Program Files*, adds Start‑menu/Desktop shortcuts, and registers an entry under
-**Apps & features** so you can uninstall cleanly. Running a newer setup over an existing install
-upgrades it **in place** (it closes a running instance first). The installer can optionally collect
-your AI/sync credentials — see [Provisioning credentials](#provisioning-credentials-through-the-installer).
-
-### Option C — Build from source
+### Option B — Build from source
 Requires the [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0).
 
 ```powershell
