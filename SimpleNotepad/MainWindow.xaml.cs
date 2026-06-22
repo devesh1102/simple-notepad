@@ -129,11 +129,6 @@ public partial class MainWindow : Window
         JsonSyntaxColorizer.ApplyThemeColors(isLight);
         Editor.TextArea.TextView.Redraw();
         ApplyTitleBarTheme(isLight);
-
-        if (ThemeButton is not null)
-        {
-            ThemeButton.Content = $"Theme: {normalized}";
-        }
     }
 
     [DllImport("dwmapi.dll", PreserveSig = true)]
@@ -208,20 +203,6 @@ public partial class MainWindow : Window
         Editor.TextArea.SelectionBrush = new SolidColorBrush(selectionColor);
     }
 
-    private void ThemeButton_Click(object sender, RoutedEventArgs e)
-    {
-        var next = _currentTheme switch
-        {
-            "System" => "Light",
-            "Light" => "Dark",
-            _ => "System",
-        };
-
-        ApplyTheme(next);
-        _settings.Theme = next;
-        _ = PersistSettingsAsync();
-    }
-
     private async Task PersistSettingsAsync()
     {
         try
@@ -239,7 +220,6 @@ public partial class MainWindow : Window
         ApplyTheme(_settings.Theme ?? "Dark");
 
         Editor.WordWrap = _settings.WordWrap;
-        WordWrapButton.Content = Editor.WordWrap ? "Wrap: On" : "Wrap: Off";
         Editor.FontSize = Math.Clamp(_settings.FontSize, MinimumEditorFontSize, MaximumEditorFontSize);
 
         if (_settings.SidebarWidth >= SidebarColumn.MinWidth && _settings.SidebarWidth <= 1000)
@@ -475,6 +455,63 @@ public partial class MainWindow : Window
         }
 
         _sessionsView.Refresh();
+        RefreshDeviceFilterOptions();
+        UpdateEmptyState();
+    }
+
+    private const string AllDevicesFilterLabel = "All devices";
+    private const string ThisDeviceFilterLabel = "This device";
+    private bool _isUpdatingDeviceFilter;
+
+    private void RefreshDeviceFilterOptions()
+    {
+        if (DeviceFilterBox is null)
+        {
+            return;
+        }
+
+        var previous = DeviceFilterBox.SelectedItem as string ?? AllDevicesFilterLabel;
+
+        var options = new List<string> { AllDevicesFilterLabel };
+        if (_sessions.Any(item => !item.IsRemote))
+        {
+            options.Add(ThisDeviceFilterLabel);
+        }
+
+        foreach (var deviceName in _sessions
+                     .Where(item => item.IsRemote && !string.IsNullOrWhiteSpace(item.Session.OriginDeviceName))
+                     .Select(item => item.Session.OriginDeviceName!)
+                     .Distinct(StringComparer.OrdinalIgnoreCase)
+                     .OrderBy(name => name, StringComparer.OrdinalIgnoreCase))
+        {
+            options.Add(deviceName);
+        }
+
+        _isUpdatingDeviceFilter = true;
+        try
+        {
+            DeviceFilterBox.ItemsSource = options;
+            DeviceFilterBox.SelectedItem = options.Contains(previous, StringComparer.OrdinalIgnoreCase)
+                ? options.First(option => string.Equals(option, previous, StringComparison.OrdinalIgnoreCase))
+                : AllDevicesFilterLabel;
+        }
+        finally
+        {
+            _isUpdatingDeviceFilter = false;
+        }
+
+        // Only worth showing when more than one device is in play.
+        DeviceFilterBox.Visibility = options.Count > 2 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void DeviceFilterBox_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (_isUpdatingDeviceFilter)
+        {
+            return;
+        }
+
+        _sessionsView.Refresh();
         UpdateEmptyState();
     }
 
@@ -505,6 +542,23 @@ public partial class MainWindow : Window
         if (item is not SessionListItem session)
         {
             return false;
+        }
+
+        var device = DeviceFilterBox?.SelectedItem as string;
+        if (!string.IsNullOrEmpty(device) && device != AllDevicesFilterLabel)
+        {
+            if (device == ThisDeviceFilterLabel)
+            {
+                if (session.IsRemote)
+                {
+                    return false;
+                }
+            }
+            else if (!session.IsRemote ||
+                     !string.Equals(session.Session.OriginDeviceName, device, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
         }
 
         var query = SessionSearchBox.Text;
@@ -1310,6 +1364,8 @@ public partial class MainWindow : Window
         if (dialog.ShowDialog() == true)
         {
             _ = PersistSettingsAsync();
+            ApplyTheme(_settings.Theme ?? "Dark");
+            Editor.WordWrap = _settings.WordWrap;
             UpdateAiState();
             UpdateSyncStatus();
         }
@@ -1872,12 +1928,6 @@ public partial class MainWindow : Window
     private static void ShowLinkedPowerShellMessage(string message)
     {
         MessageBox.Show(message, "Simple Notepad Linked PowerShell", MessageBoxButton.OK, MessageBoxImage.Information);
-    }
-
-    private void WordWrapButton_Click(object sender, RoutedEventArgs e)
-    {
-        Editor.WordWrap = !Editor.WordWrap;
-        WordWrapButton.Content = Editor.WordWrap ? "Wrap: On" : "Wrap: Off";
     }
 
     private void Editor_PreviewMouseWheel(object sender, MouseWheelEventArgs e)

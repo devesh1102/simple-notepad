@@ -43,6 +43,23 @@ public partial class SettingsWindow : Window
         _syncService = syncService;
         _isLightTheme = isLightTheme;
 
+        // Appearance.
+        var theme = settings.Theme switch
+        {
+            "Light" => "Light",
+            "Dark" => "Dark",
+            _ => "System",
+        };
+        foreach (System.Windows.Controls.ComboBoxItem item in ThemeBox.Items)
+        {
+            if (string.Equals((string)item.Content, theme, StringComparison.Ordinal))
+            {
+                ThemeBox.SelectedItem = item;
+                break;
+            }
+        }
+        WordWrapCheck.IsChecked = settings.WordWrap;
+
         // AI fields. Secrets are never echoed back into the dialog; we only note when one is saved.
         AiEndpointBox.Text = settings.AiEndpoint ?? string.Empty;
         AiDeploymentBox.Text = settings.AiDeployment ?? string.Empty;
@@ -326,6 +343,10 @@ public partial class SettingsWindow : Window
 
     private void SaveButton_Click(object sender, RoutedEventArgs e)
     {
+        // Appearance section.
+        _settings.Theme = (ThemeBox.SelectedItem as System.Windows.Controls.ComboBoxItem)?.Content as string ?? "Dark";
+        _settings.WordWrap = WordWrapCheck.IsChecked == true;
+
         // AI section.
         if (IsAiActive())
         {

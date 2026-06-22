@@ -181,17 +181,31 @@
                     <TextBlock x:Name="SyncStatusText"
                                Margin="2,6,0,0"
                                FontSize="12"
-                               TextWrapping="Wrap"
+                               TextWrapping="NoWrap"
+                               TextTrimming="CharacterEllipsis"
+                               ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"
                                Foreground="{DynamicResource Brush.SecondaryText}"
                                Text="Sync not configured" />
                 </StackPanel>
 
-                <TextBox x:Name="SessionSearchBox"
-                         Grid.Row="2"
-                         Margin="0,0,0,12"
-                         Padding="8,6"
-                         ToolTip="Search sessions"
-                         TextChanged="SessionSearchBox_TextChanged" />
+                <Grid Grid.Row="2" Margin="0,0,0,12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBox x:Name="SessionSearchBox"
+                             Grid.Column="0"
+                             Padding="8,6"
+                             ToolTip="Search sessions"
+                             TextChanged="SessionSearchBox_TextChanged" />
+                    <ComboBox x:Name="DeviceFilterBox"
+                              Grid.Column="1"
+                              Margin="6,0,0,0"
+                              MinWidth="90"
+                              VerticalContentAlignment="Center"
+                              ToolTip="Filter sessions by device"
+                              SelectionChanged="DeviceFilterBox_SelectionChanged" />
+                </Grid>
 
                 <ListBox x:Name="SessionsList"
                          Grid.Row="3"
@@ -358,18 +372,6 @@
                                Content="Rewrite"
                                ToolTip="Rewrite the selected text with AI"
                                Click="RewriteButton_Click" />
-                        <Button x:Name="WordWrapButton"
-                               Margin="0,0,12,0"
-                               Padding="8,3"
-                               Content="Wrap: On"
-                               ToolTip="Toggle word wrap"
-                               Click="WordWrapButton_Click" />
-                        <Button x:Name="ThemeButton"
-                               Margin="0,0,12,0"
-                               Padding="8,3"
-                               Content="Theme: Dark"
-                               ToolTip="Switch theme (System / Light / Dark)"
-                               Click="ThemeButton_Click" />
                         <TextBlock x:Name="SaveStateText"
                                   Text="Saved"
                                   Foreground="{DynamicResource Brush.SaveStateDefault}"

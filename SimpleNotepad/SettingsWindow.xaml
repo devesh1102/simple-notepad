@@ -20,6 +20,45 @@
         <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto" Padding="0,0,8,0">
             <StackPanel>
 
+                <!-- ===================== APPEARANCE ===================== -->
+                <TextBlock Text="Appearance"
+                           FontSize="16" FontWeight="SemiBold"
+                           Foreground="{DynamicResource Brush.PrimaryText}" />
+                <TextBlock Margin="0,4,0,12" TextWrapping="Wrap"
+                           Foreground="{DynamicResource Brush.SecondaryText}"
+                           Text="Editor look and feel. Theme follows your Windows setting when set to System." />
+
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0" Grid.Column="0" Margin="0,0,10,10" VerticalAlignment="Center"
+                               Foreground="{DynamicResource Brush.PrimaryText}" Text="Theme" />
+                    <ComboBox x:Name="ThemeBox" Grid.Row="0" Grid.Column="1" Margin="0,0,0,10"
+                              HorizontalAlignment="Left" MinWidth="160"
+                              ToolTip="System follows Windows; Light and Dark are fixed.">
+                        <ComboBoxItem Content="System" />
+                        <ComboBoxItem Content="Light" />
+                        <ComboBoxItem Content="Dark" />
+                    </ComboBox>
+
+                    <TextBlock Grid.Row="1" Grid.Column="0" Margin="0,0,10,10" VerticalAlignment="Center"
+                               Foreground="{DynamicResource Brush.PrimaryText}" Text="Word wrap" />
+                    <CheckBox x:Name="WordWrapCheck" Grid.Row="1" Grid.Column="1" Margin="0,0,0,10"
+                              VerticalAlignment="Center"
+                              Content="Wrap long lines in the editor"
+                              Foreground="{DynamicResource Brush.PrimaryText}" />
+                </Grid>
+
+                <Border Height="1" Margin="0,18,0,18"
+                        Background="{DynamicResource Brush.Border}" />
+
                 <!-- ===================== AI REWRITE ===================== -->
                 <TextBlock Text="AI Rewrite (Azure OpenAI)"
                            FontSize="16" FontWeight="SemiBold"
